@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LoL Coach</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2/src/regular/style.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2/src/fill/style.css">
+<style>
+  :root {
+    --bg: #05090F;
+    --panel: #0C1420;
+    --panel2: #101A2C;
+    --line: rgba(200,170,110,.22);
+    --gold: #C8AA6E;
+    --gold-dim: #8A7448;
+    --text: #EAE4D4;
+    --dim: #7E8998;
+    --faint: #3c4450;
+    --blue: #4D9DE0;
+    --red: #E05D6F;
+    --green: #4FCB7C;
+    --amber: #E8B44A;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: radial-gradient(1200px 700px at 50% -10%, #0D1930 0%, var(--bg) 60%);
+    color: var(--text);
+    font: 13.5px/1.45 "Segoe UI", "Inter", system-ui, sans-serif;
+    padding: 8px 12px 9px;
+    overflow: hidden;
+  }
+  .shell { height: 100%; max-width: 1600px; margin: 0 auto; display: flex; flex-direction: column; gap: 7px; min-height: 0; }
+  i[class^="ph"], i[class*=" ph"] { line-height: 1; display: inline-block; }
+  ::-webkit-scrollbar { width: 7px; height: 7px; }
+  ::-webkit-scrollbar-thumb { background: rgba(200,170,110,.22); border-radius: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  .topbar { flex: 0 0 auto; display: flex; align-items: center; gap: 15px; padding: 1px 6px 6px; border-bottom: 1px solid rgba(255,255,255,.07); }
+  #clock { font: 700 20px/1 "Cascadia Mono", Consolas, monospace; color: #fff; text-shadow: 0 0 14px rgba(77,157,224,.35); }
+  .livepill { display: flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700; letter-spacing: .14em; color: var(--dim); text-transform: uppercase; }
+  .livepill .st-live { color: var(--green); animation: pulse 2s infinite; }
+  .livepill .st-wait { color: var(--amber); }
+  .livepill .st-dead { color: var(--red); }
+  .obj { display: flex; align-items: center; gap: 5px; }
+  .obj i { font-size: 14px; color: var(--dim); }
+  .obj .lab { font-size: 8.5px; font-weight: 700; letter-spacing: .14em; color: var(--dim); }
+  .obj .val { font: 600 12.5px/1 "Cascadia Mono", Consolas, monospace; }
+  .obj.up .val, .obj.up i { color: var(--green); }
+  .obj.soon .val, .obj.soon i { color: var(--amber); animation: pulse 1.4s infinite; }
+  .obj.gold i { color: var(--gold); }
+  .tspacer { flex: 1 1 auto; }
+  #summoner { font-size: 12px; color: var(--text); }
+  .hcost { display: flex; align-items: baseline; gap: 6px; }
+  .hcost .amount { font: 700 14.5px/1 "Cascadia Mono", Consolas, monospace; color: var(--gold); }
+  .hcost .sub { font-size: 9.5px; color: var(--dim); }
+  .mutebtn { background: transparent; border: 1px solid rgba(255,255,255,.08); color: var(--dim); border-radius: 7px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 13px; }
+  .mutebtn:hover { color: var(--gold); border-color: var(--line); }
+  .mutebtn.off { color: var(--faint); }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }
+
+  .buildstrip { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 0 6px; }
+  .buildstrip .blabel { display: flex; align-items: center; gap: 5px; font-size: 9px; font-weight: 700; letter-spacing: .2em; color: var(--gold-dim); }
+  .buildstrip .blabel i { font-size: 12px; }
+  .bitems { display: flex; align-items: center; gap: 4px; overflow: hidden; }
+  .bitem { position: relative; }
+  .bitem img { width: 23px; height: 23px; border-radius: 5px; border: 1px solid rgba(255,255,255,.10); background: #0a1220; display: block; }
+  .bitem.owned img { opacity: .45; }
+  .bitem.next img { border-color: var(--gold); box-shadow: 0 0 8px rgba(200,170,110,.4); }
+  .bitem.cur img { border-color: rgba(255,255,255,.18); }
+  .bitem.todo img { opacity: .45; }
+  .bcomplete { font-size: 9.5px; color: var(--green); letter-spacing: .08em; }
+  .bitem .chk { position: absolute; right: -3px; bottom: -3px; background: var(--green); color: #06210f; border-radius: 50%; width: 12px; height: 12px; font-size: 8px; display: flex; align-items: center; justify-content: center; }
+  .barrow { color: var(--faint); font-size: 11px; }
+
+  #deathWrap { flex: 0 0 auto; border-bottom: 1px dashed rgba(224,93,111,.35); margin-bottom: 4px; padding-bottom: 6px; }
+  .deathhead { display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 700; letter-spacing: .18em; color: #FF9A9A; text-transform: uppercase; }
+  .deathhead i { font-size: 13px; }
+  .deathhead .age { margin-left: auto; color: var(--dim); letter-spacing: .04em; text-transform: none; font-weight: 400; font-size: 10px; }
+  #death { padding-top: 6px; display: flex; flex-direction: column; gap: 5px; }
+  .crow.why .ctag { color: #FF8A8A; background: rgba(224,93,111,.14); }
+  .crow.now .ctag { color: var(--amber); background: rgba(232,180,74,.12); }
+  .crow.next .ctag { color: var(--blue); background: rgba(77,157,224,.12); }
+  .chead.death { color: #FFB3B3; }
+  .dloading { display: flex; align-items: center; gap: 8px; color: var(--dim); font-style: italic; padding: 4px 0; font-size: 13px; }
+  .dloading i { animation: spin 1s linear infinite; font-size: 14px; color: #FF9A9A; }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+  .slab {
+    flex: 1 1 auto; min-height: 0;
+    display: grid; grid-template-columns: minmax(0, 1.12fr) 1px minmax(0, 0.88fr); grid-template-rows: minmax(0, 1fr) auto;
+    background: linear-gradient(180deg, #0C1626, #0A1220);
+    border: 1px solid rgba(200,170,110,.16); border-radius: 14px; overflow: hidden;
+  }
+  .vdiv { background: linear-gradient(180deg, transparent, rgba(200,170,110,.26), transparent); }
+  .pane { min-height: 0; display: flex; flex-direction: column; padding: 10px 16px 8px; }
+  .ptitle { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; font-size: 10px; font-weight: 700; letter-spacing: .22em; color: var(--gold); text-transform: uppercase; }
+  .ptitle i { font-size: 14px; }
+  .ptitle .age { margin-left: auto; color: var(--dim); letter-spacing: .04em; text-transform: none; font-weight: 400; font-size: 10px; }
+  .pane.blue .ptitle { color: var(--blue); }
+  .pane.red .ptitle { color: var(--red); }
+
+  #coach { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-top: 7px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 22px; align-content: start; }
+  .chead { grid-column: 1 / -1; color: #B9C2D0; font-size: 12.5px; padding-bottom: 5px; border-bottom: 1px dashed rgba(255,255,255,.08); margin-bottom: 2px; }
+  .crow { display: flex; gap: 8px; align-items: flex-start; }
+  .ctag { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; font: 700 9.5px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .08em; padding: 4px 7px; border-radius: 6px; background: rgba(255,255,255,.05); white-space: nowrap; }
+  .ctag i { font-size: 11px; }
+  .ctext { font-size: 13px; line-height: 1.5; color: var(--text); }
+  .crow.threat .ctag { color: #FF8A8A; background: rgba(224,93,111,.14); }
+  .crow.build .ctag { color: var(--amber); background: rgba(232,180,74,.12); }
+  .crow.map .ctag { color: var(--blue); background: rgba(77,157,224,.12); }
+  .crow.avoid .ctag { color: #FF9E7A; background: rgba(255,158,122,.12); }
+  .crow.ward .ctag { color: #C09CFF; background: rgba(192,156,255,.12); }
+  .donow { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; margin-top: 3px; background: linear-gradient(90deg, rgba(200,170,110,.16), rgba(200,170,110,.03)); border: 1px solid rgba(200,170,110,.3); border-radius: 9px; padding: 8px 10px; }
+  .donow .ctag { color: #131313; background: var(--gold); }
+  .donow .ctext { font-weight: 600; font-size: 13.5px; }
+  .coach-wait { grid-column: 1 / -1; color: var(--dim); font-style: italic; padding: 4px 0; }
+
+  .teams { display: grid; grid-template-columns: 1fr 1fr; height: 100%; }
+  .idlemsg { display: none; align-items: center; justify-content: center; height: 100%; color: var(--dim); font-size: 13.5px; text-align: center; }
+  .idlemsg b { color: var(--gold); margin: 0 4px; }
+  .tcol { min-height: 0; display: flex; flex-direction: column; padding: 10px 14px 8px; }
+  .tcol.enemy { border-left: 1px solid rgba(255,255,255,.06); }
+  .tlist { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-top: 6px; }
+
+  .prow { position: relative; overflow: hidden; display: grid; grid-template-columns: 26px minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 4px 6px; border-radius: 8px; margin-bottom: 3px; }
+  .prow.me { background: rgba(200,170,110,.09); box-shadow: inset 0 0 0 1px rgba(200,170,110,.45); }
+  .advbar { position: absolute; top: 0; bottom: 0; opacity: .16; pointer-events: none; }
+  .advbar.ahead { left: 0; background: linear-gradient(90deg, rgba(79,203,124,.95), rgba(79,203,124,0)); }
+  .advbar.behind { right: 0; background: linear-gradient(270deg, rgba(224,93,111,.95), rgba(224,93,111,0)); }
+  .delta.plus { color: var(--green); }
+  .delta.minus { color: var(--red); }
+  .hl-champ { color: #7FD1FF; text-shadow: 0 0 8px rgba(127,209,255,.35); font-weight: 600; }
+  .hl-obj { color: #F0C060; text-shadow: 0 0 8px rgba(240,192,96,.35); font-weight: 600; }
+  .hl-item { color: #C9A0FF; text-shadow: 0 0 8px rgba(201,160,255,.35); font-weight: 600; }
+  .prow img.champ { width: 26px; height: 26px; border-radius: 6px; display: block; background: #0a1220; }
+  .pline { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+  .pname { font-weight: 600; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lvl { font: 700 9.5px/1 "Cascadia Mono", Consolas, monospace; color: var(--gold); background: rgba(200,170,110,.1); border-radius: 4px; padding: 2px 4px; }
+  .pos { font-size: 8.5px; letter-spacing: .13em; color: var(--dim); text-transform: uppercase; }
+  .you { background: var(--gold); color: #131313; font-size: 8.5px; font-weight: 700; padding: 1px 5px; border-radius: 4px; letter-spacing: .08em; }
+  .items { display: flex; gap: 2px; margin-top: 3px; flex-wrap: nowrap; overflow: hidden; }
+  .items img { width: 16px; height: 16px; border-radius: 3px; border: 1px solid rgba(255,255,255,.08); background: #0a1220; }
+  .spells { display: flex; gap: 2px; margin-left: 2px; }
+  .spells img { width: 15px; height: 15px; border-radius: 3px; opacity: .92; }
+  .mextra { font-size: 9.5px; color: var(--dim); margin-top: 2px; white-space: nowrap; overflow: hidden; }
+  .kda { text-align: right; font: 600 12.5px/1.2 "Cascadia Mono", Consolas, monospace; white-space: nowrap; }
+  .kda .k { color: var(--green); } .kda .d { color: var(--red); } .kda .a { color: var(--blue); }
+  .kda .cs { display: block; font-size: 9.5px; color: var(--dim); font-weight: 400; margin-top: 2px; }
+  .kda .gold { color: var(--gold); }
+
+  .eventsline { grid-column: 1 / -1; display: flex; gap: 14px; white-space: nowrap; overflow: hidden; font-size: 11px; color: var(--dim); padding: 5px 16px 6px; border-top: 1px solid rgba(255,255,255,.06); mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); }
+  .ev b { color: var(--gold); font-family: "Cascadia Mono", Consolas, monospace; font-weight: 600; margin-right: 5px; }
+
+  @media (max-height: 880px) {
+    body { padding: 6px 10px 7px; }
+    .shell { gap: 5px; }
+    #clock { font-size: 18px; }
+    .bitem img { width: 20px; height: 20px; }
+    .drow .ctext { font-size: 12.5px; }
+    .pane { padding: 8px 12px 6px; }
+    .ctext { font-size: 12.5px; }
+    .prow { padding: 3px 5px; margin-bottom: 2px; }
+    .prow img.champ { width: 23px; height: 23px; }
+    .items img { width: 15px; height: 15px; }
+    .spells img { width: 14px; height: 14px; }
+    .eventsline { font-size: 10.5px; padding: 4px 14px 5px; }
+  }
+
+  @media (max-width: 1150px) {
+    .slab { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; }
+    .vdiv { display: none; }
+    #coach { max-height: 38vh; }
+    .teams { height: 100%; }
+  }
+
+  @media (max-width: 720px) {
+    .teams { grid-template-columns: 1fr; }
+    .tcol.enemy { border-left: none; border-top: 1px solid rgba(255,255,255,.06); }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="topbar">
+    <div id="clock">--:--</div>
+    <div class="livepill"><i class="ph-fill ph-broadcast st-wait" id="statIcon"></i><span id="statusText">connecting</span></div>
+    <div class="obj" id="objDragon"><i class="ph-fill ph-fire"></i><span class="lab">DRG</span><span class="val" id="dragonVal">--:--</span></div>
+    <div class="obj" id="objBaron"><i class="ph-fill ph-skull"></i><span class="lab">BRN</span><span class="val" id="baronVal">--:--</span></div>
+    <div class="obj gold" id="objPhase"><i class="ph-fill ph-clock"></i><span class="val" id="phaseVal">—</span></div>
+    <div class="tspacer"></div>
+    <div id="summoner">—</div>
+    <div class="hcost"><span class="amount" id="costTotal">$0.0000</span><span class="sub" id="costSub">—</span></div>
+    <button class="mutebtn" id="muteBtn" title="toggle sound"><i class="ph-fill ph-speaker-high" id="muteIcon"></i></button>
+  </div>
+
+  <div class="buildstrip" id="buildStrip" style="display:none">
+    <span class="blabel"><i class="ph-fill ph-hammer"></i>BUILD</span>
+    <div class="bitems" id="buildItems"></div>
+  </div>
+
+  <div class="slab">
+    <div class="pane">
+      <div class="ptitle"><i class="ph-fill ph-brain"></i>Coach readout <span class="age" id="coachAge"></span></div>
+      <div id="deathWrap" style="display:none">
+        <div class="deathhead"><i class="ph-fill ph-skull"></i>Death report
+          <svg id="deathRing" width="15" height="15" viewBox="0 0 15 15" style="margin-left:2px"><circle cx="7.5" cy="7.5" r="6" fill="none" stroke="rgba(224,93,111,.25)" stroke-width="2"/><circle id="deathArc" cx="7.5" cy="7.5" r="6" fill="none" stroke="#E05D6F" stroke-width="2" stroke-dasharray="37.7" stroke-dashoffset="0" stroke-linecap="round" transform="rotate(-90 7.5 7.5)"/></svg>
+          <span class="age" id="deathAge"></span></div>
+        <div id="death"></div>
+      </div>
+      <div id="coach"><div class="coach-wait">Waiting for the first coach tick…</div></div>
+    </div>
+    <div class="vdiv"></div>
+    <div class="pane" style="padding:0">
+      <div class="idlemsg" id="idleMsg">Not in a game yet - <b>queue up</b> and this board comes alive.</div>
+      <div class="teams">
+        <div class="tcol">
+          <div class="ptitle blue"><i class="ph-fill ph-shield"></i>Your team</div>
+          <div class="tlist" id="team1"></div>
+        </div>
+        <div class="tcol enemy">
+          <div class="ptitle red"><i class="ph-fill ph-sword"></i>Enemy team</div>
+          <div class="tlist" id="team2"></div>
+        </div>
+      </div>
+    </div>
+    <div class="eventsline" id="events"></div>
+  </div>
+</div>
+
+<script>
+const CDN = 'https://ddragon.leagueoflegends.com/cdn/16.18.1';
+const SPELL_ICONS = { Flash:'SummonerFlash', Ignite:'SummonerDot', Teleport:'SummonerTeleport', Smite:'SummonerSmite',
+  Ghost:'SummonerHaste', Heal:'SummonerHeal', Exhaust:'SummonerExhaust', Barrier:'SummonerBarrier',
+  Cleanse:'SummonerBoost', Snowball:'SummonerSnowball', Clarity:'SummonerMana' };
+const POS = { MIDDLE:'MID', BOTTOM:'BOT', UTILITY:'SUP', JUNGLE:'JGL', TOP:'TOP', NONE:'' };
+
+const COACH_TAGS = [
+  ['THREAT', 'ph-warning-octagon', 'threat'],
+  ['BUILD', 'ph-hammer', 'build'],
+  ['MAP', 'ph-map-trifold', 'map'],
+  ['AVOID', 'ph-prohibit', 'avoid'],
+  ['WARD', 'ph-eye', 'ward']
+];
+const DEATH_TAGS = [
+  ['WHY', 'ph-magnifying-glass', 'why'],
+  ['NOW', 'ph-hourglass', 'now'],
+  ['NEXT', 'ph-arrow-right', 'next']
+];
+const MOJIBAKE = [
+  [/\u00d4\u00c7\u00f6/g, '\u2014'],
+  [/\u00d4\u00c7\u00f4/g, '\u2013'],
+  [/\u00d4\u00c7\u00d6/g, '\u2019'],
+  [/\u00d4\u00c7\u00dc/g, '\u201c'],
+  [/\u00d4\u00c7\u0153/g, '\u201d']
+];
+
+let state = { inGame: false };
+let anchor = { t: 0, at: performance.now() };
+let lastPlanItems = [];
+let hlItems = [];
+let KEYWORD_RE = null;
+let KEYWORD_MAP = new Map();
+
+const OBJECTIVES = ['dragon soul', 'elder dragon', 'rift herald', 'voidgrubs', 'rift scuttler', 'scuttle crab', 'blue buff', 'red buff', 'inhibitor', 'dragon', 'baron', 'herald', 'grubs', 'scuttle', 'elder', 'soul', 'turret', 'turrets', 'plates', 'raptors', 'wolves', 'gromp', 'krugs'];
+
+function buildKeywords(){
+  const champs = new Set();
+  for (const p of [...(state.myTeam || []), ...(state.enemyTeam || [])]) if (p.champ) champs.add(p.champ);
+  const items = new Set([...hlItems, ...(lastPlanItems || []).map(i => i.name)]);
+  const all = [
+    ...[...champs].map(n => [n, 'hl-champ']),
+    ...[...items].map(n => [n, 'hl-item']),
+    ...OBJECTIVES.map(n => [n, 'hl-obj'])
+  ].filter(pair => pair[0] && pair[0].length >= 3)
+   .sort((a, b) => b[0].length - a[0].length);
+  const map = new Map();
+  const seen = new Set();
+  const parts = [];
+  for (const pair of all) {
+    const low = pair[0].toLowerCase();
+    if (seen.has(low)) continue;
+    seen.add(low);
+    map.set(low, pair[1]);
+    parts.push(pair[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  }
+  KEYWORD_MAP = map;
+  if (!parts.length) { KEYWORD_RE = null; return; }
+  try { KEYWORD_RE = new RegExp('\\b(?:' + parts.join('|') + ')\\b', 'gi'); } catch (e) { KEYWORD_RE = null; }
+}
+
+function highlight(raw){
+  if (!KEYWORD_RE || !raw) return esc(raw);
+  let out = '', last = 0, m;
+  KEYWORD_RE.lastIndex = 0;
+  while ((m = KEYWORD_RE.exec(raw))) {
+    out += esc(raw.slice(last, m.index));
+    const cls = KEYWORD_MAP.get(m[0].toLowerCase()) || '';
+    out += `<span class="${cls}">${esc(m[0])}</span>`;
+    last = m.index + m[0].length;
+  }
+  out += esc(raw.slice(last));
+  return out;
+}
+
+let soundOn = localStorage.getItem('lolcoachMute') !== '1';
+let audioCtx = null;
+let lastCoachText = null, lastDeathText = null;
+let deathAnchor = null;
+
+function ensureAudio(){
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (e) { audioCtx = null; }
+  return audioCtx;
+}
+function chime(kind){
+  if (!soundOn) return;
+  const ctx = ensureAudio();
+  if (!ctx) return;
+  const t0 = ctx.currentTime + 0.01;
+  const notes = kind === 'death' ? [[392, 0], [311.13, 0.16]] : [[880, 0], [1174.66, 0.11]];
+  for (const pair of notes) {
+    const f = pair[0], off = pair[1];
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.value = f;
+    const start = t0 + off;
+    const peak = kind === 'death' ? 0.22 : 0.14;
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.exponentialRampToValueAtTime(peak, start + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, start + 0.45);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(start); o.stop(start + 0.5);
+  }
+}
+function updateMuteIcon(){
+  document.getElementById('muteIcon').className = 'ph-fill ' + (soundOn ? 'ph-speaker-high' : 'ph-speaker-slash');
+  document.getElementById('muteBtn').classList.toggle('off', !soundOn);
+}
+
+function tidy(s){ let x = String(s ?? ''); for (const [re, rep] of MOJIBAKE) x = x.replace(re, rep); return x; }
+const esc = s => tidy(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = s => { s = Math.max(0, Math.floor(s)); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; };
+
+function setStatus(kind, text){
+  document.getElementById('statIcon').className = 'ph-fill ph-broadcast st-' + kind;
+  document.getElementById('statusText').textContent = text;
+}
+
+function itemImgs(items, spells){
+  let h = '<div class="items">';
+  for (const it of items || []) {
+    h += `<img src="${CDN}/img/item/${it.id}.png" title="${esc(it.n)}" onerror="this.style.display='none'">`;
+  }
+  if (spells && spells.length) {
+    h += '<span class="spells">';
+    for (const sp of spells) {
+      const f = SPELL_ICONS[sp]; if (f) h += `<img src="${CDN}/img/spell/${f}.png" title="${esc(sp)}" onerror="this.style.display='none'">`;
+    }
+    h += '</span>';
+  }
+  h += '</div>';
+  return h;
+}
+
+function playerCard(p, opp){
+  const pos = POS[p.pos] ?? p.pos;
+  const gold = (p.gold != null) ? ` · <span class="gold">${Math.round(p.gold)}g</span>` : '';
+  let bar = '';
+  let deltaTxt = '';
+  let tip = '';
+  if (opp) {
+    const dv = (p.value || 0) - (opp.value || 0);
+    const ad = Math.abs(dv);
+    if (ad >= 150) {
+      const pct = Math.min(100, ad / 20);
+      bar = `<span class="advbar ${dv > 0 ? 'ahead' : 'behind'}" style="width:${pct}%"></span>`;
+      const v = ad >= 1000 ? (ad / 1000).toFixed(1) + 'k' : ad;
+      deltaTxt = ` · <span class="delta ${dv > 0 ? 'plus' : 'minus'}">${dv > 0 ? '+' : '-'}${v}</span>`;
+      tip = ` title="item gold vs ${esc(opp.champ)}: ${dv > 0 ? '+' : ''}${dv}g"`;
+    }
+  }
+  let extra = '';
+  if (p.me) {
+    const a = p.abil || {};
+    extra = `<div class="mextra">Q${a.Q ?? 0} W${a.W ?? 0} E${a.E ?? 0} R${a.R ?? 0}${p.keystone ? ' · ' + esc(p.keystone) : ''}</div>`;
+  }
+  return `<div class="prow${p.me ? ' me' : ''}"${tip}>${bar}
+    <img class="champ" src="${CDN}/img/champion/${p.key}.png" title="${esc(p.champ)}" onerror="this.src='${CDN}/img/champion/Unknown.png'">
+    <div>
+      <div class="pline"><span class="pname">${esc(p.champ)}</span><span class="lvl">${p.level}</span>${p.me ? '<span class="you">YOU</span>' : ''}<span class="pos">${esc(pos)}</span></div>
+      ${itemImgs(p.items, p.spells)}
+      ${extra}
+    </div>
+    <div class="kda"><span class="k">${p.k ?? 0}</span>/<span class="d">${p.d ?? 0}</span>/<span class="a">${p.a ?? 0}</span><span class="cs">${p.cs ?? 0} CS${gold}${deltaTxt}</span></div>
+  </div>`;
+}
+
+function renderTopbar(s, now){
+  const dk = s.dragonKills || [], bk = s.baronKills || [];
+  let dNext;
+  if (!dk.length) dNext = 300;
+  else { const last = dk[dk.length-1]; dNext = last.t + ((last.type === 'Elder' || dk.length >= 4) ? 360 : 300); }
+  const bNext = bk.length ? bk[bk.length-1].t + 360 : 1200;
+  const obj = (id, at) => {
+    const el = document.getElementById(id);
+    const left = at - now;
+    el.classList.toggle('up', left <= 0);
+    el.classList.toggle('soon', left > 0 && left <= 60);
+    return left <= 0 ? 'UP' : fmt(left);
+  };
+  document.getElementById('dragonVal').textContent = obj('objDragon', dNext) + (dk.length ? ' (' + dk.length + ')' : '');
+  document.getElementById('baronVal').textContent = obj('objBaron', bNext);
+  document.getElementById('phaseVal').textContent = now < 14*60 ? 'EARLY' : (now < 25*60 ? 'MID' : 'LATE');
+}
+
+function renderEvents(ev){
+  const el = document.getElementById('events');
+  const out = [];
+  for (const e of (ev || [])) {
+    let txt = null;
+    if (e.n === 'ChampionKill') txt = `${e.killer} killed ${e.victim}`;
+    else if (e.n === 'DragonKill') txt = `${e.dragon} dragon slain by ${e.killer}`;
+    else if (e.n === 'BaronKill') txt = `Baron slain by ${e.killer}`;
+    else if (e.n === 'HeraldKill') txt = 'Rift Herald slain';
+    else if (e.n === 'HordeKill') txt = 'Voidgrub slain';
+    else if (e.n === 'TurretKilled') txt = 'Turret destroyed';
+    else if (e.n === 'InhibKilled') txt = 'Inhibitor destroyed';
+    else if (e.n === 'Ace') txt = 'ACE';
+    else if (e.n === 'FirstBlood') txt = 'First blood';
+    if (txt) out.push(`<span class="ev"><b>${fmt(e.t)}</b>${esc(txt)}</span>`);
+  }
+  el.innerHTML = out.slice(-5).join('');
+}
+
+function renderPlan(items){
+  lastPlanItems = items || [];
+  const strip = document.getElementById('buildStrip');
+  if (!lastPlanItems.length) { strip.style.display = 'none'; return; }
+  strip.style.display = 'flex';
+  const me = (state.myTeam || []).find(x => x.me);
+  const inv = (me && me.items) ? me.items : [];
+  const ownedIds = new Set(inv.map(i => i.id));
+  const isDone = it => {
+    if (!it.id) return false;
+    if (ownedIds.has(it.id)) return true;
+    if (it.chain) for (const c of it.chain) if (ownedIds.has(c)) return true;
+    return false;
+  };
+  let html = '';
+  const seen = new Set();
+  for (const it of inv) {
+    if (!it.id || seen.has(it.id)) continue;
+    seen.add(it.id);
+    html += `<span class="bitem cur" title="${esc(it.n)}"><img src="${CDN}/img/item/${it.id}.png" onerror="this.style.display='none'"></span>`;
+  }
+  const pending = lastPlanItems.filter(it => !isDone(it));
+  html += '<i class="ph-bold ph-caret-right barrow"></i>';
+  if (pending.length) {
+    pending.forEach((it, i) => {
+      if (i) html += '<i class="ph-bold ph-caret-right barrow"></i>';
+      const next = i === 0;
+      html += `<span class="bitem ${next ? 'next' : 'todo'}" title="${esc(it.name)}${next ? ' - next buy' : ''}">`;
+      if (it.id) html += `<img src="${CDN}/img/item/${it.id}.png" onerror="this.style.display='none'">`;
+      else html += `<span style="font-size:9.5px;color:var(--dim);white-space:nowrap">${esc(it.name)}</span>`;
+      html += '</span>';
+    });
+  } else {
+    html += '<span class="bcomplete">plan complete</span>';
+  }
+  document.getElementById('buildItems').innerHTML = html;
+}
+
+function render(s){
+  if (!s.inGame) {
+    document.getElementById('clock').textContent = '--:--';
+    document.getElementById('summoner').textContent = '—';
+    document.getElementById('dragonVal').textContent = '--:--';
+    document.getElementById('baronVal').textContent = '--:--';
+    document.getElementById('phaseVal').textContent = '—';
+    document.getElementById('team1').innerHTML = '';
+    document.getElementById('team2').innerHTML = '';
+    document.getElementById('events').innerHTML = '';
+    document.getElementById('idleMsg').style.display = 'flex';
+    document.querySelector('.teams').style.display = 'none';
+    setStatus('wait', 'waiting for a game');
+    return;
+  }
+  document.getElementById('idleMsg').style.display = 'none';
+  document.querySelector('.teams').style.display = 'grid';
+  const all = [...s.myTeam, ...s.enemyTeam];
+  const me = all.find(p => p.me);
+  if (me) document.getElementById('summoner').textContent = me.name || me.champ;
+  buildKeywords();
+  const mineByPos = {}, foeByPos = {};
+  for (const p of s.myTeam) if (p.pos && p.pos !== 'NONE') mineByPos[p.pos] = p;
+  for (const p of s.enemyTeam) if (p.pos && p.pos !== 'NONE') foeByPos[p.pos] = p;
+  document.getElementById('team1').innerHTML = s.myTeam.map(p => playerCard(p, foeByPos[p.pos])).join('');
+  document.getElementById('team2').innerHTML = s.enemyTeam.map(p => playerCard(p, mineByPos[p.pos])).join('');
+  renderTopbar(s, s.time);
+  renderEvents(s.events);
+  renderPlan(lastPlanItems);
+  setStatus('live', 'live · ' + s.mode);
+}
+
+function renderCoach(j){
+  const el = document.getElementById('coach');
+  document.getElementById('coachAge').textContent = (j.age != null) ? `${Math.round(j.age)}s ago` : '';
+  const text = (j.text || '').trim();
+  if (text && text !== 'OUT OF GAME' && lastCoachText !== null && text !== lastCoachText) chime('tick');
+  if (text) lastCoachText = text;
+  if (!text) { el.innerHTML = '<div class="coach-wait">Waiting for the first coach tick…</div>'; return; }
+  if (text === 'OUT OF GAME') { el.innerHTML = '<div class="coach-wait">Coach idle — not in a game.</div>'; return; }
+  let html = '';
+  for (const raw of text.split(/\r?\n/)) {
+    const l = tidy(raw).trim();
+    if (!l || l === '===COACH===') continue;
+    let m;
+    const tag = COACH_TAGS.find(t => (m = l.match(new RegExp('^[-\\u2022]\\s*' + t[0] + '\\s*:\\s*(.*)$', 'i'))));
+    if (tag) {
+      html += `<div class="crow ${tag[2]}"><span class="ctag"><i class="ph-fill ${tag[1]}"></i>${tag[0]}</span><span class="ctext">${highlight(m[1])}</span></div>`;
+    } else if ((m = l.match(/^DO NOW\s*:\s*(.*)$/i))) {
+      html += `<div class="donow"><span class="ctag"><i class="ph-fill ph-lightning"></i>DO NOW</span><span class="ctext">${highlight(m[1])}</span></div>`;
+    } else {
+      html += `<div class="chead">${highlight(l)}</div>`;
+    }
+  }
+  el.innerHTML = html;
+}
+
+function updateDeathRing(){
+  const wrap = document.getElementById('deathWrap');
+  if (!deathAnchor || deathAnchor.kind !== 'final' || wrap.style.display === 'none') return;
+  const age = deathAnchor.age + (performance.now() - deathAnchor.at) / 1000;
+  const arc = document.getElementById('deathArc');
+  if (arc) arc.setAttribute('stroke-dashoffset', String(37.7 * Math.min(1, age / 60)));
+  document.getElementById('deathAge').textContent = age < 8 ? 'just now' : `${Math.round(age)}s ago`;
+  if (age > 60) { wrap.style.display = 'none'; deathAnchor = null; }
+}
+
+function renderDeath(j){
+  const wrap = document.getElementById('deathWrap');
+  const el = document.getElementById('death');
+  const ring = document.getElementById('deathRing');
+  const text = (j.text || '').trim();
+  if (!text || j.age == null) { wrap.style.display = 'none'; deathAnchor = null; return; }
+  const pend = text.match(/^PENDING\|([^|]+)\|(.+)$/);
+  if (pend) {
+    wrap.style.display = 'block';
+    const isNew = !deathAnchor || deathAnchor.kind !== 'pending' || deathAnchor.clock !== pend[1] || deathAnchor.killer !== pend[2];
+    if (isNew) chime('death');
+    deathAnchor = { kind: 'pending', clock: pend[1], killer: pend[2], age: j.age, at: performance.now() };
+    ring.style.display = 'none';
+    document.getElementById('deathAge').textContent = 'analyzing';
+    el.innerHTML = `<div class="chead death"><i class="ph-fill ph-skull"></i> Died ${highlight(pend[1])} to ${highlight(pend[2])} - generating report</div><div class="dloading"><i class="ph-bold ph-spinner-gap"></i>analyzing the death and your best options...</div>`;
+    return;
+  }
+  if (j.age > 60) { wrap.style.display = 'none'; deathAnchor = null; return; }
+  wrap.style.display = 'block';
+  ring.style.display = '';
+  deathAnchor = { kind: 'final', age: j.age, at: performance.now() };
+  updateDeathRing();
+  let html = '';
+  for (const raw of text.split(/\r?\n/)) {
+    const l = tidy(raw).trim();
+    if (!l || l === '===DEATH===') continue;
+    let m;
+    if ((m = l.match(/^DIED\s*:\s*(.*)$/i))) {
+      html += `<div class="chead death"><i class="ph-fill ph-skull"></i> Died ${highlight(m[1])}</div>`;
+    } else if ((m = l.match(/^DO NOW\s*:\s*(.*)$/i))) {
+      html += `<div class="donow"><span class="ctag"><i class="ph-fill ph-lightning"></i>DO NOW</span><span class="ctext">${highlight(m[1])}</span></div>`;
+    } else {
+      const tag = DEATH_TAGS.find(t => (m = l.match(new RegExp('^' + t[0] + '\\s*:\\s*(.*)$', 'i'))));
+      if (tag) html += `<div class="crow ${tag[2]}"><span class="ctag"><i class="ph-fill ${tag[1]}"></i>${tag[0]}</span><span class="ctext">${highlight(m[1])}</span></div>`;
+      else html += `<div class="chead death">${highlight(l)}</div>`;
+    }
+  }
+  el.innerHTML = html;
+}
+
+async function pollGame(){
+  try {
+    const r = await fetch('/api/game', { cache: 'no-store' });
+    const j = await r.json();
+    state = j;
+    if (j.inGame) anchor = { t: j.time, at: performance.now() };
+    render(j);
+  } catch (e) { setStatus('dead', 'UI server offline'); }
+}
+async function pollCoach(){
+  try { renderCoach(await (await fetch('/api/coach', { cache: 'no-store' })).json()); } catch (e) {}
+}
+async function pollDeath(){
+  try { renderDeath(await (await fetch('/api/death', { cache: 'no-store' })).json()); } catch (e) {}
+}
+async function pollPlan(){
+  try { renderPlan((await (await fetch('/api/plan', { cache: 'no-store' })).json()).items || []); } catch (e) {}
+}
+async function pollHighlight(){
+  try {
+    const j = await (await fetch('/api/highlight', { cache: 'no-store' })).json();
+    hlItems = j.items || [];
+    buildKeywords();
+  } catch (e) {}
+}
+async function pollCost(){
+  try {
+    const j = await (await fetch('/api/cost', { cache: 'no-store' })).json();
+    if (!j.ok) { document.getElementById('costTotal').textContent = '$0.0000'; document.getElementById('costSub').textContent = 'no game yet'; return; }
+    document.getElementById('costTotal').textContent = '$' + (j.cost || 0).toFixed(4);
+    document.getElementById('costSub').textContent = `${j.ticks} ticks this game · last $${(j.lastTick || 0).toFixed(4)}`;
+  } catch (e) {}
+}
+function tickClock(){
+  if (state.inGame) {
+    const t = anchor.t + (performance.now() - anchor.at) / 1000;
+    document.getElementById('clock').textContent = fmt(t);
+    renderTopbar(state, t);
+  }
+}
+
+document.getElementById('muteBtn').addEventListener('click', () => {
+  soundOn = !soundOn;
+  localStorage.setItem('lolcoachMute', soundOn ? '0' : '1');
+  updateMuteIcon();
+  if (soundOn) chime('tick');
+});
+document.addEventListener('click', () => ensureAudio(), { once: true });
+updateMuteIcon();
+pollGame(); pollCoach(); pollDeath(); pollCost(); pollPlan(); pollHighlight();
+setInterval(pollGame, 2000);
+setInterval(pollCoach, 4000);
+setInterval(pollDeath, 4000);
+setInterval(pollCost, 5000);
+setInterval(pollPlan, 10000);
+setInterval(pollHighlight, 60000);
+setInterval(updateDeathRing, 1000);
+setInterval(tickClock, 250);
+</script>
+</body>
+</html>

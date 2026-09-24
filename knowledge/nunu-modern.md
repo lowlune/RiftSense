@@ -1,0 +1,202 @@
+# Nunu & Willump — MODERN Summoner's Rift Dossier (AP / Liandry's / Dark Harvest)
+Patch 26.19 (live 2026-09-22/23). All data retrieved 2026-09-23. Citation convention: source URLs are listed at the end of each bullet and cover every number in that bullet.
+
+**Scope / anti-"League Classic" note**
+- The player's client shows "CLASSIC", but live data (Heartsteel, Blackfire Torch, Kraken Slayer, Youmuu's Ghostblade, Dark Seal, Gustwalker Hatchling, Solstice Sleigh, Zeke's, Locket, Liandry's, Rylai's, Boots of Swiftness, Plated Steelcaps, Dark Harvest, Voidgrubs/HordeKill, Eye of the Herald/HeraldKill, modern jungle pets) proves this is MODERN Summoner's Rift — this file uses only modern pages, never `/League_Classic`.
+- Patch 26.19 balance changes: buffs Aatrox, Aphelios, Aurora, Draven, Elise, Fiora, Kha'Zix, Lillia, Master Yi, Volibear; nerfs Nasus, Nocturne, Poppy, Rumble, Ryze, Vi; tweak Lucian — **no Nunu changes** (https://www.leagueoflegends.com/en-us/news/game-updates/league-of-legends-patch-26-19-notes/; https://battleroyalefanatic.com/lol-26-19-patch-notes-every-champion-and-item-change/).
+- Nunu's only V26.19 entry is a bugfix: "Fixed a bug where he could unlock his camera during Biggest Snowball Ever!" (https://wiki.leagueoflegends.com/en-us/Nunu/Patch_history).
+- Most recent Nunu balance changes: V26.03 W max base damage up to 180/225/270/315/360 and E per-hit up to 15/22.5/30/37.5/45; V26.02 Q cooldown up to 13/12/11/10/9 s and E per-hit AP ratio down to 12% AP (https://wiki.leagueoflegends.com/en-us/Nunu/Patch_history).
+- Build-data patch labels: u.gg page shows "Patch 26.18"; op.gg shows its own "16.19" label (same 2026 season, current patch) — noted where used.
+
+---
+
+## 1. NUNU & WILLUMP MODERN KIT (exact current numbers)
+
+**Base stats (Nunu)**
+- HP 610 (+90/level), Mana 280 (+42), HP5 5 (+0.8), MP5 7 (+0.5), Armor 29 (+4.2), MR 32 (+2.05), AD 61 (+3), MS 345, base AS 0.625, range 125, mana-based, melee, magic adaptive (https://wiki.leagueoflegends.com/en-us/Nunu).
+
+**Passive — Call of the Freljord**
+- Damaging an enemy champion, large monster, or structure gives Nunu/Willump **and one nearby allied champion (prioritizing highest attack speed)** 20% bonus attack speed and 10% bonus movement speed for 4 s; cannot re-trigger from the same enemy for a time; successive triggers extend by 4 s; max remaining duration 44 s (https://wiki.leagueoflegends.com/en-us/Nunu).
+- Willump's basic attacks deal 30% AD physical damage to secondary targets in a cone (no spell effects) — this is why Nunu skirmish DPS includes cleave autos; use it to damage the wave/monsters while hitting the primary target (https://wiki.leagueoflegends.com/en-us/Nunu).
+- Ally-sharing is centered on Nunu's position; if no ally is prioritized by stats, it goes to the closest ally (https://wiki.leagueoflegends.com/en-us/Nunu).
+
+**Q — Consume**
+- Cost 60 mana, cooldown 13/12/11/10/9 s, cast time 0.3 s, range 125 (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume; https://wiki.leagueoflegends.com/en-us/Nunu).
+- Non-champion (minion/monster) **true damage: 400/600/800/1000/1200** — flat, **no AP ratio** on the true damage (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume).
+- Non-champion base heal: 65/95/125/155/185 (+90% AP) (+10% bonus HP); empowered (<50% max HP) heal: 97.5/142.5/187.5/232.5/277.5 (+135% AP) (+15% bonus HP) (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume).
+- Vs champions: 60/100/140/180/220 (+65% AP) (+5% bonus HP) magic damage; heal reduced to 60%: base 39/57/75/93/111 (+54% AP) (+6% bonus HP), empowered 58.5/85.5/112.5/139.5/166.5 (+81% AP) (+9% bonus HP) (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume).
+- Execute/devour: if Consume would kill a minion or small/medium monster it devours it (stun + pull over cast time); spell shields block both damage and heal; icon can be pinged to show monster damage in chat (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume).
+- Coaching: Q heals far more off camps than champions (185 vs 111 base at rank 5) — in a fight, Q a camp/minion when available (https://www.skill-capped.com/lol/guides/builds/nunu/jungle).
+
+**W — Biggest Snowball Ever!**
+- Cost 50/55/60/65/70 mana, cooldown 14 s, range 750–1750 (by charge time), explosion radius 130/260/390 by size, speed 425/435–594/595 +100% bonus MS (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Biggest_Snowball_Ever!).
+- Channel up to 10 s; cleanses slows, slow-immune + ghosted while rolling; size small→medium at 2.5 s→large at 5 s; can recast after 0.5 s (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Biggest_Snowball_Ever!).
+- Damage: min 36/45/54/63/72 (+30% AP), max 180/225/270/315/360 (+150% AP) — scaled 0–400% by charge time (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Biggest_Snowball_Ever!).
+- Crowd control on hit: knockup 0.5–0.75 s, then stun 0–0.75 s (both by charge time); explosion also triggers on terrain, large monsters and large pets; self-stun 0.132 s if detonated while steering (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Biggest_Snowball_Ever!).
+- Rolls over minions/small monsters for 33.3% damage (max 59.94–119.88 +49.95% AP at rank 5); full circle trick can hit one target up to 3 times for 150/195/240/285/330 (+150% AP) and detonate for a total up to 300/390/480/570/660 (+300% AP) (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Biggest_Snowball_Ever!).
+- **W is disabled for the first 15 s of the game** (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Biggest_Snowball_Ever!).
+
+**E — Snowball Barrage**
+- Cost 50/55/60/65/70 mana, cooldown 14/13/12/11/10 s, range 700; 3 snowballs per volley over 0.4 s (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Snowball_Barrage).
+- Per-hit damage 15/22.5/30/37.5/45 (+12% AP); per-volley total 45/67.5/90/112.5/135 (+36% AP); up to 2 recasts within 3 s (1 s between casts) for a max total 135/202.5/270/337.5/405 (+135% AP) (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Snowball_Barrage).
+- Enemies hit 3 times are slowed 30/35/40/45/50% for 1 s; champions/large monsters hit once are Snowbound for 4 s (refreshing) (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Snowball_Barrage).
+- Root trigger: 3 s after first cast, Snowbound enemies near Willump take 20/30/40/50/60 (+80% AP) magic damage and are rooted 0.5–1.62 s (by level) (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Snowball_Barrage).
+- Each volley counts as a cast instance (6 Conqueror stacks possible) (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Snowball_Barrage).
+
+**R — Absolute Zero**
+- Cost 100 mana, cooldown 110/100/90 s, channel up to 3 s, radius 650, centered on Nunu (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Absolute_Zero).
+- Shield while channeling: 65/75/85 (+150% AP) (+30/40/50% bonus HP); refreshes each second and decays over 3 s after the channel ends (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Absolute_Zero).
+- Slow during channel: 0–95% (by channel time); after detonation enemies stay slowed 0–3 s (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Absolute_Zero).
+- Maximum magic damage: **625/950/1275 (+300% AP)** — scaled 0–100% by channel time (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Absolute_Zero).
+- The area is invisible if the duo is not visible to the enemy (brush/fog R is effectively stealth) (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Absolute_Zero).
+- Interrupts: death, grounding, immobilizing effects, silences/cast-inhibitors; **movement and basic attacks interrupt**; the only usable item actives during the channel are Shurelya's Battlesong, Youmuu's Ghostblade and Randuin's Omen — every other item active interrupts and auto-detonates the R; the wiki interaction table lists **Flash/Teleport/Recall/Hexflash as interrupting the channel** (so Flash first, then R; an older third-party guide claims the opposite — treat that claim as unverified) (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Absolute_Zero; https://www.lolsensei.com/en/champion/nunu/jungle/guide).
+
+**Typical level-up order (current data)**
+- Skill priority Q > E > W (u.gg "Skill Priority" Q, E, W, 52.72% WR, 17,093 matches) (https://u.gg/lol/champions/nunu/build?role=jungle).
+- Most common path: Q-W-E-Q-Q-R-Q-E-Q-E-R-E-E-W-W; R at 6/11/16 (u.gg leveling Q 1/4/5/7/9, E 3/8/10/12/13, W 2/14/15/17/18) (https://u.gg/lol/champions/nunu/build?role=jungle).
+- op.gg skill order Q>E>W with the same Q-W-E-Q-Q-R-Q-E-Q-E-R-E-E-W-W path at 46.00% pick (https://op.gg/lol/champions/nunu/build/jungle).
+- Q max first matters for this build: rank 5 Q = 1200 true damage to monsters/objectives and 185 (+90% AP) heal (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume).
+
+**Runes this player uses — Dark Harvest (current numbers)**
+- Base damage 30 (+11 per Soul) (+10% bonus AD) (+5% AP), adaptive (magic with AP build); triggers on pet or non-proc damage to champions below 50% max HP; 35 s cooldown, resets to 1 s on a takedown; also reaps 1 Soul from kill credit on a minion/monster/turret kill while off cooldown (https://wiki.leagueoflegends.com/en-us/Dark_Harvest).
+- Critical interaction: Dark Harvest **does not trigger on proc damage** — the wiki explicitly names Liandry's Torment (and Scorch/Ricochet) as non-triggering; your W/E/R hits and autos do trigger it (https://wiki.leagueoflegends.com/en-us/Dark_Harvest).
+- Dark Harvest AP ratio is only 5% AP — it is an execute/stack tool, not your main damage; Liandry's burn and R are the damage (https://wiki.leagueoflegends.com/en-us/Dark_Harvest).
+- Patch history: V25.S1.3 base 30 / +11 per Soul (current) (https://wiki.leagueoflegends.com/en-us/Dark_Harvest).
+- Sample-size note: op.gg shows Dark Harvest at 55.2% WR / 32.1% pick on Nunu jungle in the current window (335 games) vs Electrocute 53.8% / 16.4% (https://op.gg/lol/champions/nunu/build/jungle).
+
+---
+
+## 2. NUNU JUNGLE PLAY AND OBJECTIVE MATH
+
+**First clear / routes (guide data: jungler.gg patch 26.16, skill-capped patch 26.15)**
+- Recommended safe 6-camp clear: start Red Brambleback with Q; level 2 adapt — take E second on a Blue start (faster Gromp), W second on a Red start (Raptors) (https://jungler.gg/champions/nunu-willump/; https://www.skill-capped.com/lol/guides/builds/nunu/jungle).
+- High-tempo OTP route: Red (Q) → Raptors (W) → cross to Blue side rolling W into Gromp → level 3 fast → gank bot/mid (https://www.skill-capped.com/lol/guides/builds/nunu/jungle).
+- You do not need a Health Potion on Nunu (Q sustain) (https://www.skill-capped.com/lol/guides/builds/nunu/jungle).
+- Q heals 50% more below 50% HP; check HP before Q to maximize the empowered heal (97.5–277.5 +135% AP +15% bonus HP) (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume; https://www.skill-capped.com/lol/guides/builds/nunu/jungle).
+- Nunu is not a resource-gated jungler: clear fast, then convert clear speed into map pressure/ganks (https://leaguetips.gg/nunu-jungle-path/; https://jungler.gg/champions/nunu-willump/).
+
+**Gank patterns**
+- W from fog/around walls: hold 2.5–5 s for a medium/large snowball — knockup 0.5–0.75 s + stun 0–0.75 s (max at full charge) (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Biggest_Snowball_Ever!).
+- Chain CC: W knockup/stun → E (3 hits = 30–50% slow, then root 0.5–1.62 s 3 s after first cast) → R channel while they are locked (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Snowball_Barrage).
+- Lane ganks: roll W through the lane brush behind the enemy; the W cleanses slows and is slow-immune while rolling (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Biggest_Snowball_Ever!).
+- R from brush/fog: the R area is invisible while Nunu is unseen — full-channel R = 625/950/1275 (+300% AP) plus 95% slow (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Absolute_Zero).
+- Practice note: start the R channel ~200 units inside their path so they cannot walk out; hard CC (stun/silence/ground) cancels it, so R only when key interrupts are down (https://www.lolsensei.com/en/champion/nunu/jungle/guide).
+
+**Objective secure math (Q true damage + Smite)**
+- Q true damage to monsters by Q rank: rank 1 = 400, rank 2 = 600, rank 3 = 800, rank 4 = 1000, rank 5 = 1200 (no AP scaling) (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume).
+- With the Q-max order (Q at levels 1/4/5/7/9): Q rank 3 at L5–6 = 800; rank 4 at L7–8 = 1000; rank 5 at L9+ = 1200 (https://u.gg/lol/champions/nunu/build?role=jungle; https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume).
+- Smite is **flat, not level-based**: Smite 600 true damage → Unleashed Smite 1000 (after 15 pet treats) → Primal Smite 1400 (after 35 treats, hits target + nearby monsters); 15 s cooldown, 90 s recharge, max 2 charges; first recharge starts at 0:48; Smite cannot be used on small monsters (https://wiki.leagueoflegends.com/en-us/Smite).
+- u.gg's average jungle quest completion (Primal Smite) goal time for Nunu is **15:02** (https://u.gg/lol/champions/nunu/build?role=jungle).
+- Q+Smite burst: **L6 = 800 + 1000 = 1800**; **L9 = 1200 + 1000 = 2200**; **L11 = 1200 + 1000–1400 = 2200–2600** (derived from the two sources above).
+- Dragon HP: elemental drakes have **5106.25–10000 HP (based on level), starting level 6**; Dragon first spawns 5:00 and respawns every 5:00 (https://wiki.leagueoflegends.com/en-us/Infernal_Drake; https://wiki.leagueoflegends.com/en-us/Dragon_pit).
+- % of first-drake HP secured by Q+Smite (using 5106.25 HP): **L6 1800 ≈ 35.3%**; **L9 2200 ≈ 43.1%**; **L11 2600 ≈ 50.9%**; vs a ~6000 HP mid drake L9 is ≈36.7% (derived: https://wiki.leagueoflegends.com/en-us/Infernal_Drake + https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume + https://wiki.leagueoflegends.com/en-us/Smite).
+- Caveat: Elemental Dragons gain 15% damage reduction per Dragon Slayer stack their attacker's team has (up to 60% at 4 stacks) — your effective Q+Smite burst on your 2nd/3rd drake is lower (e.g., 2200 × 0.85 = 1870 on drake #2) (derived; interaction with true damage unverified) (https://wiki.leagueoflegends.com/en-us/Dragon_pit).
+- Voidgrubs: each grub has 2269–4700 HP (by level, start level 7); at L7 Q4 (1000) + Unleashed Smite (1000) = 2000 ≈ **88% of a 2269 HP grub** (derived) (https://wiki.leagueoflegends.com/en-us/Voidgrub_camp; https://wiki.leagueoflegends.com/en-us/Smite).
+- Rift Herald: 11718–18900 HP (start level 9); Q5+Primal = 2600 ≈ **13.8–22.2%** — never solo-contest Herald with burst alone (derived) (https://wiki.leagueoflegends.com/en-us/Rift_Herald).
+- Scuttle: first scuttlers have 35% reduced HP (1007.5–3425.5 by level); Q+Smite one-shots early scuttle (https://wiki.leagueoflegends.com/en-us/Rift_Scuttler_camp).
+
+**Scuttle timing**
+- First spawn 2:55 (V26.01, moved from 3:30); respawn 2:30; initial spawn at average champion level; both initial scuttles must die before the respawn timer starts; killing one spawns a Speed Shrine (90 s, 525 sight radius, 30% MS for out-of-combat champions) (https://wiki.leagueoflegends.com/en-us/Rift_Scuttler_camp).
+- Scuttle is slow-immune while not fleeing but has -100% tenacity: your E root/other CC lasts twice as long on her (good for locking her for a Smite) (https://wiki.leagueoflegends.com/en-us/Rift_Scuttler_camp).
+
+**Teamfights**
+- Engage with a charged W (knockup+stun), follow with E for slow→root, then channel R on the clustered backline from fog/brush; your R shield 65/75/85 (+150% AP)(+30/40/50% bonus HP) lets AP Nunu channel through some damage (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Absolute_Zero).
+- Q the nearest camp/minion during fights for the bigger heal (185 +90% AP +10% bonus HP vs 111 +54% AP vs champions) (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume).
+- Give your ADC the passive: damaging a champion/large monster/structure grants 20% AS + 10% MS to the highest-AS nearby ally (https://wiki.leagueoflegends.com/en-us/Nunu).
+- Anti-dive: Zhonya's Hourglass 2.5 s stasis (120 s CD) survives burst; note any item active except Shurelya's/Youmuu's/Randuin's interrupts an active R channel and auto-detonates it (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data; https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Absolute_Zero).
+
+**The 8 most common Nunu mistakes (coaching compilation; numbers referenced where verified)**
+1. Wasting W: releasing immediately gives min-size damage 36–72 (+30% AP) and minimum knockup 0.5 s instead of max 180–360 (+150% AP) and 0.75+0.75 s CC — charge 2.5–5 s (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Biggest_Snowball_Ever!).
+2. R from the wrong distance/angle: R is centered on Nunu (radius 650) — starting the channel short means everyone walks out; channel from fog/brush (area invisible) (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Absolute_Zero).
+3. Channeling R into saved hard CC (stun/silence/grounding interrupts; movement also cancels) (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Absolute_Zero).
+4. Using Q for damage instead of the heal: vs champions the heal is only 60% and damage is 60–220 (+65% AP); camps give 185 (+90% AP) base heal (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume).
+5. Burning Q right before an objective spawns: Q rank 5 is 1200 true damage — your entire secure window; hold it for the ~1200+1000–1400 HP window (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume; https://wiki.leagueoflegends.com/en-us/Smite).
+6. Full-AP into 2+ tanks: Liandry's burn is capped at 120 vs monsters but uncapped vs champions (6% max HP/3 s) — still take Liandry's + defensive item, not pure burst (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data).
+7. Ignoring Dark Harvest stacking rules: DH only procs below 50% HP, 35 s CD, and Liandry's burn does NOT trigger it — you must land W/E/R/autos (https://wiki.leagueoflegends.com/en-us/Dark_Harvest).
+8. Over-ganking a losing lane: camp cycles are 2:15 (small) / 5:00 (buffs) — every failed gank costs a full camp cycle (https://leagueoflegendstools.com/tools/jungle-respawn-timers/).
+
+---
+
+## 3. AP NUNU ITEM DETAILS (current stats/costs/passives)
+
+Item numbers below were pulled from the wiki's live item data module on 2026-09-23 (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data); each item also has a page with the same data.
+
+- **Liandry's Torment** — 3000 g, 60 AP, 300 HP; Torment: ability/pet damage burns for 1% max HP per 0.5 s over 3 s = **6% max HP total**, capped 20 per tick (120 total) vs monsters; Suffering: +2% damage per second in combat with enemy champions, up to 3 stacks = **+6%** (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data; https://wiki.leagueoflegends.com/en-us/Liandry%27s_Torment).
+- **Rylai's Crystal Scepter** — 2600 g, 65 AP, 400 HP; Rimefrost: ability damage slows 30% for 1 s (re-applied by damage-over-time ticks) (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data; https://wiki.leagueoflegends.com/en-us/Rylai%27s_Crystal_Scepter).
+- **Liandry's + Rylai's interaction (verified correction):** modern Liandry's has **no movement-impair amplification** (that was the pre-2018 kit) and the burn lasts its full 3 s regardless of slow; Rylai's slow does **not** extend or amplify the burn — its value is keeping targets inside W/E/R and sticking for repeated ability hits. Also, Liandry's burn ticks are proc damage, so they do **not** re-apply Rimefrost and do **not** trigger Dark Harvest (https://wiki.leagueoflegends.com/en-us/Liandry%27s_Torment; https://wiki.leagueoflegends.com/en-us/Dark_Harvest).
+- **Zhonya's Hourglass** — 3250 g, 105 AP, 50 armor; Time Stop: 2.5 s stasis (untargetable/invulnerable), 120 s CD; limited to 1 Stasis item; QSS goes on 0.5 s CD when it activates (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data; https://wiki.leagueoflegends.com/en-us/Zhonya%27s_Hourglass).
+- **Abyssal Mask** — 2650 g, 350 HP, 45 MR, 15 AH; Unmake: enemy champions within 700 units take **12% increased magic damage** from all sources (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data; https://wiki.leagueoflegends.com/en-us/Abyssal_Mask). Best vs 2+ magic-damage allies on your team or vs melee-heavy enemy front lines you fight around.
+- **Mercury's Treads** — 1250 g, 20 MR, 45 MS, **30% tenacity** (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data).
+- **Plated Steelcaps** — 1200 g, 25 armor, 45 MS; Plating: incoming basic damage reduced by 10% (excludes turrets) (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data). Current Nunu data: Steelcaps 55.03% WR (33.37% pick) vs Sorcerer's Shoes 50.17% WR (28.53% pick) — defensive boots are the higher-winrate default unless snowballing (https://op.gg/lol/champions/nunu/build/jungle).
+- **Spirit Visage** — 2700 g, 400 HP, 50 MR, 10 AH, +25% **all healing/shielding/HP regen** — directly multiplies Q heals and R shield (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data).
+- **Kaenic Rookern** — 2900 g, 400 HP, 80 MR; Magebane: after 15 s without taking magic damage, gain a shield absorbing 15% max HP (anti-burst-magic) (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data).
+- **Force of Nature** — 2800 g, 400 HP, 55 MR, 4% MS; Steadfast: stacks up to 8 from champion magic damage → at max, +70 bonus MR and +6% bonus MS (anti-sustained-magic: Cassiopeia/Swain/Ryze) (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data). Both Rookern and Force of Nature exist on 26.19 — choose by burst vs sustained damage.
+- **Dark Seal** — 350 g, 15 AP, 50 HP; Glory: +2 stacks/kill, +1/assist (max 10); +4 AP per stack (max +40 AP); lose 5 stacks on death (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data).
+- **Mejai's Soulstealer** — 1500 g, 20 AP, 100 HP; +4 stacks/kill, +2/assist (max 25); +5 AP per stack (max +125 AP); +10% MS at 10+ stacks; lose 10 stacks on death; stacks carry from Dark Seal (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data).
+- **Anti-heal for AP junglers (26.19):** Grievous Wounds = **40% reduced healing and health regen**; sources: Oblivion Orb 800 g / 25 AP and Morellonomicon 2850 g / 75 AP / 15 AH / 350 HP, both applying GW for 3 s when you deal magic damage to enemy champions; also Bramble Vest/Thornmail (armor route) and Ignite (https://wiki.leagueoflegends.com/en-us/Grievous_Wounds; https://wiki.leagueoflegends.com/en-us/Module:ItemData/data).
+- Recommended AP core from live build data (op.gg, current patch): Liandry's Torment → Dead Man's Plate → Spirit Visage (4.52% pick, 74.07% WR, 27 games) is the highest-winrate core; the AP burst core is Hextech Rocketbelt → Stormsurge → Zhonya's Hourglass (50.00% WR, 22 games) or → Shadowflame (76.92% WR, 13 games); fourth-item options: Zhonya's, Thornmail, Spirit Visage, Jak'Sho, Shadowflame (https://op.gg/lol/champions/nunu/build/jungle). u.gg's recommended page currently shows Electrocute + Liandry's first (52.5% WR rune page, 3,434 matches) with a separate "AP" page running Stormraider's Surge + Hextech Rocketbelt (https://u.gg/lol/champions/nunu/build?role=jungle). Rylai's does not appear in the sampled core builds — treat it as a situational stickiness pick, not a default.
+- Itemization logic for this player: vs 2+ HP stackers Liandry's first (6% max HP burn + 6% Suffering amp); vs 2+ auto attackers Steelcaps; vs burst magic Rookern; vs sustained magic Force of Nature; vs healing Morello; Dark Seal early if you are getting kills/assists, Mejai's only when ahead (deaths cost 10 stacks) (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data; https://op.gg/lol/champions/nunu/build/jungle).
+
+---
+
+## 4. ENEMY ITEM COUNTERS (exact mechanics + the concrete Nunu answer)
+
+- **Heartsteel** — 3000 g, 900 HP, 100% base HP5; Colossal Consumption: while within 700 units of an enemy champion gain a stack each second (max 3); next basic attack consumes 3 stacks for 70 (+6% max HP) bonus physical damage and permanently grants bonus HP equal to 10% of that = 7 (+0.6% max HP); 30 s CD per target; Goliath: increased size (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data; https://wiki.leagueoflegends.com/en-us/Heartsteel).
+  - Nunu counter: (a) deny stacks — break the 700-unit contact and don't let the fight sit on top of them; (b) buy **Liandry's Torment before Rylai's** — its 6% max-HP burn + up to 6% Suffering is your only %-HP damage and scales vs their growing HP pool; Rylai's adds zero damage; (c) Abyssal Mask aura amplifies your whole team's magic damage by 12% onto them (https://wiki.leagueoflegends.com/en-us/Liandry%27s_Torment; https://wiki.leagueoflegends.com/en-us/Abyssal_Mask).
+- **Blackfire Torch** — 2800 g, 80 AP, 20 AH, 600 mana; Baleful Blaze: ability damage burns 10 (+1% AP) magic damage every 0.5 s over 3 s = 60 (+6% AP) total, +10 per tick vs monsters (120 (+6% AP) total vs monsters); Blackfire: +4% AP per afflicted champion/epic/large monster (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data; https://wiki.leagueoflegends.com/en-us/Blackfire_Torch).
+  - Nunu counter: it is a proc burn (no spell effects) that amplifies enemy mages; buy MR (Kaenic Rookern/Spirit Visage) and kill the holder first with W+E into R; don't group tightly while it ticks (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data; https://wiki.leagueoflegends.com/en-us/Grievous_Wounds).
+- **Youmuu's Ghostblade** — 2800 g, 55 AD, 18 lethality, 4% MS; active Wraith Step: +20% MS and ghosted for 6 s (45 s CD); Haunt: +20 MS out of combat with champions (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data; https://wiki.leagueoflegends.com/en-us/Youmuu%27s_Ghostblade).
+  - Nunu counter: lethality assassin — Zhonya's (50 armor + 2.5 s stasis) and Plated Steelcaps blunt the burst; use W slow/knockup and E root to catch them before they reach your backline; their Wraith Step is their escape — force it before committing R (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data).
+- **Kraken Slayer** — 3000 g, 45 AD, 40% AS, 4% MS; Bring It Down: on-hit stacks (max 2); every 3rd attack deals 150–200 bonus physical (by level) increased by 0–75% based on target's missing HP (up to ~350) (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data; https://wiki.leagueoflegends.com/en-us/Kraken_Slayer).
+  - Nunu counter: missing-HP on-hit shreds your health bar once you are low — Plated Steelcaps (-10% basic damage), attack-speed slows (Frozen Heart/Randuin's on your team), and Zhonya's to dodge the third-hit window; kill the marksman with a full-channel R before extended fights (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data).
+- **Zeke's Convergence** — 2200 g, 300 HP, 25 armor, 25 MR, 10 AH, 15 ultimate haste; on ultimate cast, a Frostfire Tempest forms around the holder for 5 s dealing 30 magic damage every 0.25 s (=150 total) in a 350-radius and slowing 30% (45 s CD) (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data; https://wiki.leagueoflegends.com/en-us/Zeke%27s_Convergence).
+  - Nunu counter: it is a 350-radius zone — channel R from outside 350 units or after the storm ends; its 45 s CD is tied to their ult, so bait their ult then re-engage (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data).
+- **Locket of the Iron Solari** — 2200 g, 200 HP, 30 armor, 30 MR, 10 AH; Devotion: active shields holder + allies within 850 for 290–360 (target's level), decaying over 2.5 s (90 s CD); shield is 75% weaker if the target had another Devotion within 20 s (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data; https://wiki.leagueoflegends.com/en-us/Locket_of_the_Iron_Solari).
+  - Nunu counter: force the Locket with poke, then re-engage inside its 90 s CD; the shield decays in 2.5 s — wait it out before committing DH/R burst; spread so the 850-radius shield hits fewer targets (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data).
+- **Solstice Sleigh** — support upgrade (from Bounty of Worlds): 200 HP, 75 HP5, 75 MP5, 9 GP10; Going Sledding: slowing or immobilizing an enemy champion gives you and the most-wounded ally within 1500 units 20% MS (decays over 2.5 s) and 50–230 bonus HP for 2.5 s (30 s CD); requires a nearby ally (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data; https://wiki.leagueoflegends.com/en-us/Solstice_Sleigh).
+  - Nunu counter: your W/E slow will trigger it — add 50–230 effective HP to kill math in bot-lane ganks (L1–18), and re-engage after the 30 s CD; it does nothing if the support is isolated (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data).
+
+---
+
+## 5. JUNGLE TEMPO / TIMERS (verified current 26.19 values)
+
+- Camp initial spawn: 1:30 all camps; **small camps respawn 2:15** (Gromp, Krugs, Raptors, Wolves); **buffs (Blue/Red) respawn 5:00** (https://leagueoflegendstools.com/tools/jungle-respawn-timers/; https://wiki.leagueoflegends.com/en-us/Krug_camp; https://wiki.leagueoflegends.com/en-us/Raptor_camp).
+- Respawn visibility: enemy camp timers only show accurately if you saw the clear; buffs show 60 s before respawn, other camps 10 s before (https://wiki.leagueoflegends.com/en-us/Jungling).
+- Rift Scuttler: first spawn **2:55** (V26.01, from 3:30), respawn **2:30**; first scuttlers -35% HP, -80% XP; Speed Shrine 90 s / 30% MS / 525 sight (https://wiki.leagueoflegends.com/en-us/Rift_Scuttler_camp).
+- Voidgrubs: spawn **8:00** (V25.09, from 6:00 — note: the Baron pit page still lists 6:00; the grub page's own infobox and patch history say 8:00, use 8:00); **single spawn per game, no respawn**; despawn **14:45** (14:55 if in combat); 3 grubs, 2269–4700 HP each, 30 local gold / 65 XP each; 3rd grub grants Hunger of the Void (spawns allied Voidmites vs structures); first grub counts as the epic takedown for Feats/jungle quest (https://wiki.leagueoflegends.com/en-us/Voidgrub_camp; https://wiki.leagueoflegends.com/en-us/Baron_pit).
+- Rift Herald: spawns **15:00** in the baron pit, despawns **19:45** (19:55 if in combat), no respawn; HP 11718–18900; killing drops Eye of the Herald at the pit entrance for 20 s; summoned Mercenary leap deals **3000 true damage** to structures; champion basic attacks on her open eye deal 12% of her max HP bonus true damage (eye CD 6 s) (https://wiki.leagueoflegends.com/en-us/Rift_Herald; https://wiki.leagueoflegends.com/en-us/Baron_pit).
+- Dragon: first spawn **5:00**, **respawn every 5:00**; Rift Shift after the 2nd drake is slain and the 3rd is determined; **Dragon Soul is awarded on a team's 4th elemental drake kill**; after that the pit spawns **Elder Dragon with a 6:00 respawn** (https://wiki.leagueoflegends.com/en-us/Dragon_pit; https://wiki.leagueoflegends.com/en-us/Infernal_Drake).
+- Baron Nashor: spawns **20:00**, respawns every **6:00**; his spawn turns the map into the Corrupted Rift (Void-corrupted buffs/scuttle) (https://wiki.leagueoflegends.com/en-us/Baron_pit).
+- **Atakhan was removed from the game in V26.01** — do not plan for 20:00 Atakhan fights; any 2025-era guide mentioning Atakhan is obsolete (https://wiki.leagueoflegends.com/en-us/Atakhan).
+- Turret plates: 5 plates per lane turret, **120 local gold each** (600 per turret + 50 global = 650); **plates no longer expire at 14:00** (they persist until destroyed); outer turrets instead decay from **11:00 to 15:00** losing 10 gold and 15 armor/MR per minute (cap -40 gold, -60 resistances); plate thresholds 10/25/45/70/100% HP; outer turret 9000 HP / 60 armor / 60 MR; melee champions deal +20% damage to turrets; first turret takedown grants +300 global (https://wiki.leagueoflegends.com/en-us/Turret).
+- Recall timing heuristics for this player (coaching; not patch-verified): back after your 2nd–3rd camp cycle (~3:15–4:15) to spend gold before the 5:00 drake; sync recalls so you respawn as your buffs come back (5:00 buff cycle); never recall holding 2 Smite charges if a contestable objective is <60 s away (https://leagueoflegendstools.com/tools/jungle-respawn-timers/; https://wiki.leagueoflegends.com/en-us/Smite) (unverified heuristic).
+- Give vs contest: contest only if Q+Smite burst (1800–2600) covers a meaningful chunk of the remaining objective HP (see Section 2) and you have a Smite charge; give if your R is down (CD 110/100/90 s), the enemy jungler is alive with Smite up, or you have no vision/priority — Nunu's value is re-entering on the 2:15/5:00 camp cycles rather than flipping a blind 50/50 (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume; https://wiki.leagueoflegends.com/en-us/Smite; https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Absolute_Zero).
+
+---
+
+## 6. CRITICAL COACHING IF-THEN RULES (AP Nunu, Dark Harvest)
+
+1. **If the enemy jungler shows top at ~5:00, dragon is free:** at L5–6 your Q rank 3 (800 true) + Unleashed Smite (1000) = 1800 ≈ 35.3% of the first drake's 5106 HP — start it immediately with W and finish with Q+Smite. (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume; https://wiki.leagueoflegends.com/en-us/Smite; https://wiki.leagueoflegends.com/en-us/Infernal_Drake)
+2. **If you have 35 pet treats (~15:02 average quest completion), you have Primal Smite:** Q5 (1200) + Primal (1400) = 2600 burst — that is your only realistic Herald steal window (13.8–22.2% of her 11718–18900 HP); otherwise give Herald and take the 2:15 camp cycle. (https://u.gg/lol/champions/nunu/build?role=jungle; https://wiki.leagueoflegends.com/en-us/Smite; https://wiki.leagueoflegends.com/en-us/Rift_Herald)
+3. **If they have 2+ Heartsteel stackers, buy Liandry's before Rylai's:** Liandry's 6% max-HP burn + up to 6% Suffering is real damage vs HP stacking, while Rylai's adds no damage; also deny Heartsteel stacks by breaking the 700-unit contact. (https://wiki.leagueoflegends.com/en-us/Liandry%27s_Torment; https://wiki.leagueoflegends.com/en-us/Rylai%27s_Crystal_Scepter; https://wiki.leagueoflegends.com/en-us/Heartsteel)
+4. **If they have an AP burst mage, take Zhonya's after core:** 3250 g / 105 AP / 50 armor / 2.5 s stasis; remember any item active except Shurelya's, Youmuu's, Randuin's interrupts your R channel and auto-detonates it. (https://wiki.leagueoflegends.com/en-us/Zhonya%27s_Hourglass; https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Absolute_Zero)
+5. **If they have 2+ auto-attack carries, buy Plated Steelcaps over Sorcerer's Shoes:** 1200 g, 25 armor, -10% basic damage; Nunu's current live WR is 55.03% on Steelcaps vs 50.17% on Sorcs. (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data; https://op.gg/lol/champions/nunu/build/jungle)
+6. **If they have a fed burst mage, buy Kaenic Rookern (2900 g, 80 MR, 15% max-HP shield); if sustained magic (Cassiopeia/Swain), buy Force of Nature (2800 g, 8 stacks → +70 MR):** matching burst vs sustained damage is the difference between surviving and dying mid-R. (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data)
+7. **If they have 2+ healers, buy Oblivion Orb at 800 g by your first back and finish Morellonomicon (2850 g) by mid-game:** Grievous Wounds cuts healing 40%, and every Nunu ability applies it on magic damage. (https://wiki.leagueoflegends.com/en-us/Grievous_Wounds; https://wiki.leagueoflegends.com/en-us/Module:ItemData/data)
+8. **If you die 2+ times before 8:00, skip Mejai's (or keep base Dark Seal):** Mejai's loses 10 stacks per death (125 AP at 25 stacks), Dark Seal only 5 — stabilize on Voidgrubs (3 × 30 g / 65 XP) and scuttle first. (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data; https://wiki.leagueoflegends.com/en-us/Voidgrub_camp; https://wiki.leagueoflegends.com/en-us/Rift_Scuttler_camp)
+9. **If the enemy jungler dies or shows opposite side between 8:00–14:45, take Voidgrubs:** at L7 Q4 (1000) + Smite (1000) ≈ 88% of a 2269 HP grub, and the 3rd grub's Hunger of the Void adds permanent structure pressure — grubs never respawn, so every uncontested camp is pure tempo. (https://wiki.leagueoflegends.com/en-us/Voidgrub_camp; https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume; https://wiki.leagueoflegends.com/en-us/Smite)
+10. **If your R is up and their carries are grouped in a pit, run the combo from fog:** charged W (0.75 s knockup + up to 0.75 s stun) → E (root 0.5–1.62 s) → full-channel R 625/950/1275 (+300% AP); Flash first, then R (Flash is listed as interrupting the channel); never R into saved point-and-click CC. (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Biggest_Snowball_Ever!; https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Snowball_Barrage; https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Absolute_Zero)
+11. **If they have Locket + Zeke's support, force the actives then re-engage:** Locket's 290–360 shield (850 radius) decays in 2.5 s with a 90 s CD and Zeke's storm is only 350 radius for 5 s — poke out Locket, step out of 350, then commit. (https://wiki.leagueoflegends.com/en-us/Module:ItemData/data)
+12. **If an enemy is below 50% HP, gank now for the Dark Harvest proc:** DH deals 30 (+11/soul) (+5% AP) and resets to a 1 s cooldown on takedown; remember Liandry's burn does not trigger DH, so land W/E/R or an auto to cash it. (https://wiki.leagueoflegends.com/en-us/Dark_Harvest)
+13. **If you are 2+ levels behind at a drake spawn, give it and play the 15:00 Herald timer instead:** your burst (1800–2600) cannot out-secure a Smite fight from behind, and the 2:15 camp respawns recover the XP faster than a coin-flip fight. (https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume; https://wiki.leagueoflegends.com/en-us/Smite; https://leagueoflegendstools.com/tools/jungle-respawn-timers/)
+14. **If you win a top-side gank after 11:00, take plates (120 gold each, no 14:00 expiry) and then Herald at 15:00:** plates + the Mercenary's 3000 true-damage leap convert a won fight into an inhibitor — a far better use of AP Nunu's mid-game than farming a lost bot side. (https://wiki.leagueoflegends.com/en-us/Turret; https://wiki.leagueoflegends.com/en-us/Rift_Herald)
+
+---
+
+### Key corrections vs generic/older advice (summary)
+- Smite damage is **not level-based** on 26.19: 600 → 1000 (15 treats) → 1400 (35 treats) (https://wiki.leagueoflegends.com/en-us/Smite).
+- Modern Liandry's has **no slow-based damage amplification**; Rylai's does not extend the burn, and Liandry's ticks do not trigger Dark Harvest (https://wiki.leagueoflegends.com/en-us/Liandry%27s_Torment; https://wiki.leagueoflegends.com/en-us/Dark_Harvest).
+- **Atakhan does not exist in 26.19** (removed V26.01) (https://wiki.leagueoflegends.com/en-us/Atakhan).
+- Voidgrubs spawn at **8:00** and never respawn (https://wiki.leagueoflegends.com/en-us/Voidgrub_camp).
+- Turret plates **no longer expire at 14:00** and are worth 120 gold each (https://wiki.leagueoflegends.com/en-us/Turret).
+- First scuttle spawns at **2:55**, not 3:30 (https://wiki.leagueoflegends.com/en-us/Rift_Scuttler_camp).

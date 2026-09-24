@@ -1,0 +1,15 @@
+# runtime / personal state
+coach_latest.txt
+death_latest.txt
+game_epoch.json
+*.err
+*.log
+last_run.tmp
+
+# downloaded assets (auto-fetched from Data Dragon at runtime)
+champion.json
+items.json
+
+# python
+__pycache__/
+*.pyc

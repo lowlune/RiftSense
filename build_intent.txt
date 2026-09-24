@@ -1,0 +1,13 @@
+PLAN[Nunu & Willump]: Haunting Guise -> Liandry's Torment -> Rylai's Crystal Scepter -> Zhonya's Hourglass -> Abyssal Mask
+PLAN[Warwick]: Blade of The Ruined King -> Plated Steelcaps -> Thornmail -> Kaenic Rookern -> Sterak's Gage
+PLAN[Volibear]: Rod of Ages -> Fimbulwinter -> Spirit Visage -> Kaenic Rookern -> Sterak's Gage
+PLAN[Kayn]: Profane Hydra -> Black Cleaver -> Sterak's Gage -> Guardian Angel -> situational bruiser
+PLAN[Nocturne]: Stridebreaker -> Black Cleaver -> Sterak's Gage -> Guardian Angel -> situational defense
+PLAN[default]: continue the build path the player is already on; suggest the strongest next item for their champion and this game
+
+Notes for the coach:
+- Always use the PLAN line for the champion the player is actually playing (given in the game data), never another champion's plan.
+- Boots priority: Plated Steelcaps vs heavy AD, Mercury's Treads vs heavy CC.
+- Every purchase suggestion must include a short "because ..." reason, a next target for surplus gold, and one trap purchase to avoid.
+- Do not push a different build path unless the current one is clearly wrong for the matchup; if you deviate, say why in one clause.
+- Keep the champion's PLAN line (that line only) updated if the recommended path truly changes.
