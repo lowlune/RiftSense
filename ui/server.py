@@ -1,94 +1,246 @@
+import contextlib
 import http.server
 import json
 import os
 import re
 import sqlite3
 import ssl
+import tempfile
+import threading
 import time
+import urllib.error
 import urllib.request
+import uuid
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
+try:
+    import msvcrt
+except ImportError:
+    msvcrt = None
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(BASE)
 CHAMP_FILE = os.path.join(ROOT, 'champion.json')
-COACH_FILE = os.path.join(ROOT, 'coach_latest.txt')
-DEATH_FILE = os.path.join(ROOT, 'death_latest.txt')
-DB_PATH = os.path.join(os.path.expanduser('~'), '.local', 'share', 'opencode', 'opencode.db')
-PORT = 7777
-
-ctx = ssl.create_default_context()
-ctx.check_hostname = False
-ctx.verify_mode = ssl.CERT_NONE
-
-
-def load_champ_map():
-    try:
-        with open(CHAMP_FILE, 'r', encoding='utf-8-sig') as f:
-            data = json.load(f)['data']
-        return {v['name']: v['id'] for v in data.values()}
-    except Exception:
-        return {}
-
-
-# champion/item maps are loaded after the asset check below
-
 ITEM_FILE = os.path.join(ROOT, 'items.json')
 BUILD_FILE = os.path.join(ROOT, 'build_intent.txt')
+COACH_FILE = os.path.join(ROOT, 'coach_latest.txt')
+DEATH_FILE = os.path.join(ROOT, 'death_latest.txt')
+EPOCH_FILE = os.path.join(ROOT, 'game_epoch.json')
+DB_PATH = os.path.join(os.path.expanduser('~'), '.local', 'share', 'opencode', 'opencode.db')
+PORT = int(os.environ.get('RIFTSENSE_PORT', '7777'))
+
+DEFAULT_ASSET_VERSION = '16.18.1'
+VERSIONS_URL = 'https://ddragon.leagueoflegends.com/api/versions.json'
+CDN_URL = 'https://ddragon.leagueoflegends.com/cdn/%s/data/en_US/%s.json'
+EPOCH_DRIFT_MS = 120000
+GAME_TIME_MAX = 6 * 60 * 60
+NO_GAME_REASONS = ('no_active_game', 'client_unreachable')
+
+SSL_CTX = ssl.create_default_context()
+SSL_CTX.check_hostname = False
+SSL_CTX.verify_mode = ssl.CERT_NONE
+
+ASSETS = {
+    'version': None,
+    'championVersion': None,
+    'itemVersion': None,
+    'championCount': 0,
+    'itemCount': 0,
+    'mismatch': False,
+}
+
+CHAMPS = {}
+ITEMS = {}
+ITEM_NAMES = {}
+ITEM_DISPLAY = {}
+ITEM_COSTS = {}
+ITEM_INTO = {}
+
+_UNSET = object()
+
+
+def _num(v):
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return v
+    return None
+
+
+def _read_json(path):
+    with open(path, 'r', encoding='utf-8-sig') as f:
+        return json.load(f)
+
+
+def _validate_catalog(obj, kind):
+    if not isinstance(obj, dict):
+        raise ValueError('catalog root is not an object')
+    data = obj.get('data')
+    if not isinstance(data, dict) or not data:
+        raise ValueError('catalog data missing or empty')
+    if obj.get('type') and obj.get('type') != kind:
+        raise ValueError('catalog type mismatch')
+    return obj
+
+
+def _try_catalog(path, kind):
+    try:
+        return _validate_catalog(_read_json(path), kind)
+    except Exception:
+        return None
+
+
+def _fetch_latest_version():
+    try:
+        with urllib.request.urlopen(VERSIONS_URL, timeout=15) as r:
+            versions = json.loads(r.read().decode('utf-8'))
+        if isinstance(versions, list) and versions and isinstance(versions[0], str):
+            return versions[0]
+    except Exception:
+        pass
+    return None
+
+
+def _download_asset(kind, path, version):
+    url = CDN_URL % (version, kind)
+    req = urllib.request.Request(url, headers={'User-Agent': 'RiftSense/1.0'})
+    with urllib.request.urlopen(req, context=SSL_CTX, timeout=60) as r:
+        payload = r.read()
+    obj = json.loads(payload.decode('utf-8-sig'))
+    _validate_catalog(obj, kind)
+    directory = os.path.dirname(path) or '.'
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix='.dl_%s_' % kind, suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(payload)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+    return obj
 
 
 def ensure_assets():
-    if os.path.exists(CHAMP_FILE) and os.path.exists(ITEM_FILE):
-        return
-    ver = '16.18.1'
-    try:
-        with urllib.request.urlopen('https://ddragon.leagueoflegends.com/api/versions.json', timeout=15) as r:
-            ver = json.loads(r.read().decode('utf-8'))[0]
-    except Exception:
-        pass
-    for url, path in (
-        ('https://ddragon.leagueoflegends.com/cdn/%s/data/en_US/champion.json' % ver, CHAMP_FILE),
-        ('https://ddragon.leagueoflegends.com/cdn/%s/data/en_US/item.json' % ver, ITEM_FILE),
-    ):
-        if not os.path.exists(path):
+    latest = _UNSET
+    for kind, path in (('champion', CHAMP_FILE), ('item', ITEM_FILE)):
+        if _try_catalog(path, kind) is not None:
+            continue
+        if latest is _UNSET:
+            latest = _fetch_latest_version()
+        candidates = ([latest] if latest else []) + [DEFAULT_ASSET_VERSION]
+        for version in candidates:
             try:
-                with urllib.request.urlopen(url, timeout=60) as r, open(path, 'wb') as f:
-                    f.write(r.read())
+                _download_asset(kind, path, version)
+                break
             except Exception:
-                pass
+                continue
 
 
-ensure_assets()
-CHAMPS = load_champ_map()
+def load_champ_map(catalog=None):
+    if catalog is None:
+        catalog = _try_catalog(CHAMP_FILE, 'champion')
+    if not catalog:
+        return {}
+    return {v['name']: v['id'] for v in catalog['data'].values()
+            if isinstance(v, dict) and isinstance(v.get('name'), str) and isinstance(v.get('id'), str)}
 
 
-def load_item_data():
-    ids = {}
+def load_item_data(catalog=None):
+    if catalog is None:
+        catalog = _try_catalog(ITEM_FILE, 'item')
+    if not catalog:
+        return {}, {}, {}, {}, {}
+    data = catalog['data']
+    entries = []
+    for key, value in data.items():
+        if not isinstance(value, dict):
+            continue
+        try:
+            iid = int(key)
+        except (TypeError, ValueError):
+            continue
+        maps = value.get('maps') if isinstance(value.get('maps'), dict) else {}
+        if maps.get('11') is not True:
+            continue
+        entries.append((iid, value))
+    entries.sort(key=lambda pair: pair[0])
+    names = {}
+    display = {}
     costs = {}
-    into_names = {}
-    try:
-        with open(ITEM_FILE, 'r', encoding='utf-8-sig') as f:
-            data = json.load(f)['data']
-        for k, v in data.items():
-            name = v['name']
-            iid = int(k)
-            if name not in ids or iid < ids[name]:
-                ids[name] = iid
-            if name not in costs:
-                costs[name] = int((v.get('gold') or {}).get('total', 0))
-            succ = into_names.setdefault(name, set())
-            for x in (v.get('into') or []):
-                sx = data.get(str(x))
-                if sx:
-                    succ.add(sx['name'])
-        into_ids = {}
-        for name, succs in into_names.items():
-            if name in ids:
-                into_ids[ids[name]] = sorted({ids[s] for s in succs if s in ids})
-        return ids, costs, into_ids
-    except Exception:
-        return {}, {}, {}
+    purchasable = set()
+    for iid, value in entries:
+        display[iid] = str(value.get('name') or '')
+        gold = value.get('gold') if isinstance(value.get('gold'), dict) else {}
+        total = gold.get('total')
+        if isinstance(total, bool) or not isinstance(total, (int, float)):
+            total = 0
+        costs[iid] = int(total)
+        if gold.get('purchasable') is True:
+            purchasable.add(iid)
+            names.setdefault(display[iid].lower(), []).append(iid)
+    into = {}
+    for iid, value in entries:
+        if iid not in purchasable:
+            continue
+        successors = []
+        for raw in value.get('into') or []:
+            try:
+                successor = int(raw)
+            except (TypeError, ValueError):
+                continue
+            if successor in purchasable:
+                successors.append(successor)
+        into[iid] = sorted(set(successors))
+    legacy = {}
+    for iid in sorted(display):
+        name = display[iid]
+        if iid in purchasable and name not in legacy:
+            legacy[name] = iid
+    return legacy, names, display, costs, into
 
 
-ITEMS, ITEM_COSTS, ITEM_INTO = load_item_data()
+def refresh_asset_state():
+    global CHAMPS, ITEMS, ITEM_NAMES, ITEM_DISPLAY, ITEM_COSTS, ITEM_INTO
+    champ_obj = _try_catalog(CHAMP_FILE, 'champion')
+    item_obj = _try_catalog(ITEM_FILE, 'item')
+    if champ_obj:
+        CHAMPS = load_champ_map(champ_obj)
+        ASSETS['championVersion'] = champ_obj.get('version')
+        ASSETS['championCount'] = len(champ_obj['data'])
+    else:
+        CHAMPS = {}
+        ASSETS['championVersion'] = None
+        ASSETS['championCount'] = 0
+    if item_obj:
+        ASSETS['itemVersion'] = item_obj.get('version')
+        ASSETS['itemCount'] = len(item_obj['data'])
+    else:
+        ASSETS['itemVersion'] = None
+        ASSETS['itemCount'] = 0
+    ITEMS, ITEM_NAMES, ITEM_DISPLAY, ITEM_COSTS, ITEM_INTO = load_item_data(item_obj)
+    champ_version = ASSETS['championVersion']
+    item_version = ASSETS['itemVersion']
+    ASSETS['mismatch'] = bool(champ_version and item_version and champ_version != item_version)
+    ASSETS['version'] = champ_version or item_version
+
+
+def version_info():
+    return {
+        'version': ASSETS.get('version'),
+        'championVersion': ASSETS.get('championVersion'),
+        'itemVersion': ASSETS.get('itemVersion'),
+        'championCount': ASSETS.get('championCount', 0),
+        'itemCount': ASSETS.get('itemCount', 0),
+        'mismatch': bool(ASSETS.get('mismatch')),
+    }
 
 
 def chain_of(iid):
@@ -96,39 +248,411 @@ def chain_of(iid):
     stack = [iid]
     while stack:
         x = stack.pop()
-        if x in seen:
+        if x in seen or x not in ITEM_DISPLAY:
             continue
         seen.add(x)
-        for y in ITEM_INTO.get(x, []):
+        for y in ITEM_INTO.get(x, ()):
             stack.append(y)
     return sorted(seen)
 
 
 def find_item_id(name):
-    if not name or len(name) > 40:
+    if not name or len(name) > 60:
         return None
-    if name in ITEMS:
-        return ITEMS[name]
-    low = name.lower()
-    for n, i in ITEMS.items():
-        if n.lower() == low:
-            return i
+    return (ITEM_NAMES.get(name.strip().lower()) or [None])[0]
+
+
+def fetch_game():
+    try:
+        req = urllib.request.Request('https://127.0.0.1:2999/liveclientdata/allgamedata')
+        with urllib.request.urlopen(req, context=SSL_CTX, timeout=3) as r:
+            raw = r.read()
+        try:
+            return json.loads(raw.decode('utf-8')), None
+        except Exception:
+            return None, 'malformed_response'
+    except urllib.error.HTTPError as ex:
+        if ex.code == 404:
+            return None, 'no_active_game'
+        return None, 'http_%s' % ex.code
+    except urllib.error.URLError as ex:
+        reason = getattr(ex, 'reason', None)
+        if isinstance(reason, (ConnectionRefusedError, ConnectionResetError)):
+            return None, 'client_unreachable'
+        if isinstance(reason, TimeoutError):
+            return None, 'timeout'
+        text = str(reason or ex).lower()
+        if 'refused' in text or 'unreachable' in text:
+            return None, 'client_unreachable'
+        if 'timed out' in text or 'timeout' in text:
+            return None, 'timeout'
+        return None, 'unreachable'
+    except Exception:
+        return None, 'error'
+
+
+def game_status(err):
+    if err is None:
+        return 'live'
+    if err in NO_GAME_REASONS:
+        return 'no_game'
+    return 'api_error'
+
+
+def pstat(p, name):
+    if p.get(name) is not None:
+        return _num(p[name])
+    scores = p.get('scores')
+    if isinstance(scores, dict):
+        return _num(scores.get(name))
     return None
 
 
+def _player_label(p):
+    if not isinstance(p, dict):
+        return ''
+    return p.get('riotId') or p.get('riotIdGameName') or p.get('summonerName') or ''
+
+
+def resolve_identity(ap, players):
+    active = ap if isinstance(ap, dict) else {}
+    tiers = []
+    full = str(active.get('riotId') or '').strip().lower()
+    if full:
+        tiers.append(('riotId', lambda p, f=full: str(p.get('riotId') or '').strip().lower() == f))
+    game_name = str(active.get('riotIdGameName') or '').strip().lower()
+    tag_line = str(active.get('riotIdTagLine') or '').strip().lower()
+    if game_name and tag_line:
+        tiers.append(('riotIdGameName+riotIdTagLine',
+                      lambda p, g=game_name, t=tag_line:
+                      str(p.get('riotIdGameName') or '').strip().lower() == g
+                      and str(p.get('riotIdTagLine') or '').strip().lower() == t))
+    summoner = str(active.get('summonerName') or '').strip().lower()
+    if summoner:
+        tiers.append(('summonerName',
+                      lambda p, s=summoner: str(p.get('summonerName') or '').strip().lower() == s))
+    for method, matches_test in tiers:
+        matches = [p for p in players if isinstance(p, dict) and matches_test(p)]
+        if len(matches) == 1:
+            return matches[0], {'status': 'resolved', 'method': method, 'candidates': []}
+        if len(matches) > 1:
+            return None, {'status': 'ambiguous', 'method': method,
+                          'candidates': [_player_label(p) for p in matches]}
+    return None, {'status': 'unresolved', 'method': None, 'candidates': []}
+
+
+def player_obj(p, mine, ap):
+    items = None
+    value = None
+    raw_items = p.get('items')
+    if isinstance(raw_items, list):
+        items = []
+        value = 0
+        for raw in raw_items:
+            if not isinstance(raw, dict):
+                continue
+            iid = raw.get('itemID')
+            if isinstance(iid, bool) or not isinstance(iid, int) or iid <= 0:
+                continue
+            qty = raw.get('count')
+            if isinstance(qty, bool) or not isinstance(qty, int) or qty < 1:
+                qty = 1
+            cost = ITEM_COSTS.get(iid)
+            entry = {'id': iid, 'n': raw.get('displayName') or ITEM_DISPLAY.get(iid, ''), 'q': qty}
+            if cost is not None:
+                entry['cost'] = cost * qty
+                value += cost * qty
+            items.append(entry)
+    spells = []
+    ss = p.get('summonerSpells')
+    if isinstance(ss, dict):
+        for slot in ('summonerSpellOne', 'summonerSpellTwo'):
+            slot_value = ss.get(slot)
+            if isinstance(slot_value, dict) and slot_value.get('displayName'):
+                spells.append(slot_value['displayName'])
+    champ = p.get('championName')
+    obj = {
+        'champ': champ,
+        'key': CHAMPS.get(champ, (champ or '').replace(' ', '')),
+        'name': _player_label(p),
+        'pos': p.get('position') or '',
+        'level': _num(p.get('level')),
+        'k': pstat(p, 'kills'),
+        'd': pstat(p, 'deaths'),
+        'a': pstat(p, 'assists'),
+        'cs': pstat(p, 'creepScore'),
+        'items': items,
+        'value': value,
+        'valueKind': 'inventory_catalog_value',
+        'spells': spells,
+        'team': p.get('team'),
+        'me': mine,
+    }
+    if mine:
+        obj['gold'] = _num(ap.get('currentGold'))
+        obj['goldKind'] = 'available_gold'
+        abilities = ap.get('abilities')
+        levels = {}
+        if isinstance(abilities, dict) and 'Q' in abilities:
+            for key in ('Q', 'W', 'E', 'R'):
+                levels[key] = _num((abilities.get(key) or {}).get('abilityLevel'))
+        elif isinstance(abilities, list):
+            for entry in abilities:
+                if isinstance(entry, dict):
+                    levels[str(entry.get('id', '?'))[:1]] = _num(entry.get('abilityLevel'))
+        obj['abil'] = levels
+        runes = ap.get('fullRunes') or {}
+        obj['keystone'] = (runes.get('keystone') or {}).get('displayName')
+        obj['tree1'] = (runes.get('primaryRuneTree') or {}).get('displayName')
+        obj['tree2'] = (runes.get('secondaryRuneTree') or {}).get('displayName')
+    return obj
+
+
+def build_state():
+    data, err = fetch_game()
+    status = 'live' if (err is None and isinstance(data, dict) and isinstance(data.get('gameData'), dict)) else game_status(err)
+    fetched_at = time.time()
+    if status != 'live':
+        body = {
+            'status': status,
+            'inGame': False,
+            'time': None,
+            'myTeam': [],
+            'enemyTeam': [],
+            'identity': {'status': 'unknown', 'method': None, 'candidates': []},
+            'fetchedAt': fetched_at,
+            'assetVersion': ASSETS.get('version'),
+        }
+        if status == 'api_error':
+            body['error'] = err
+        else:
+            body['reason'] = err or 'no_active_game'
+        return body
+
+    g = data['gameData']
+    ap = data.get('activePlayer')
+    ap = ap if isinstance(ap, dict) else {}
+    players = data.get('allPlayers')
+    players = players if isinstance(players, list) else []
+
+    me, identity = resolve_identity(ap, players)
+
+    every_player = []
+    my_team = []
+    enemy_team = []
+    my_team_key = me.get('team') if me is not None else None
+    for p in players:
+        if not isinstance(p, dict):
+            continue
+        if me is None:
+            mine = None
+        else:
+            mine = p is me
+        obj = player_obj(p, mine, ap)
+        every_player.append(obj)
+        if me is not None and my_team_key is not None and p.get('team') == my_team_key:
+            my_team.append(obj)
+        elif me is not None and my_team_key is not None:
+            enemy_team.append(obj)
+
+    events = []
+    dragon_kills = []
+    baron_kills = []
+    raw_events = data.get('events')
+    raw_events = raw_events.get('Events') if isinstance(raw_events, dict) else None
+    if isinstance(raw_events, list):
+        for e in raw_events:
+            if not isinstance(e, dict):
+                continue
+            event_time = _num(e.get('EventTime'))
+            if event_time is None:
+                continue
+            events.append({
+                't': event_time,
+                'n': e.get('EventName'),
+                'dragon': e.get('DragonType'),
+                'killer': e.get('KillerName'),
+                'victim': e.get('VictimName'),
+                'turret': e.get('TurretKilled'),
+                'monster': e.get('MonsterType'),
+            })
+            if e.get('EventName') == 'DragonKill':
+                dragon_kills.append({'t': event_time, 'type': e.get('DragonType')})
+            elif e.get('EventName') == 'BaronKill':
+                baron_kills.append({'t': event_time})
+    events.sort(key=lambda x: x['t'])
+
+    ctx = game_context((data, None))
+    return {
+        'status': 'live',
+        'inGame': True,
+        'time': _num(g.get('gameTime')),
+        'mode': g.get('gameMode'),
+        'map': g.get('mapNumber'),
+        'sessionId': ctx.get('session'),
+        'identity': identity,
+        'fetchedAt': fetched_at,
+        'assetVersion': ASSETS.get('version'),
+        'myTeam': my_team,
+        'enemyTeam': enemy_team,
+        'players': every_player,
+        'events': events[-10:],
+        'dragonKills': dragon_kills,
+        'baronKills': baron_kills,
+    }
+
+
+_EPOCH_THREAD_LOCK = threading.Lock()
+_EPOCH_LOCK_PATH = os.path.join(tempfile.gettempdir(), 'riftsense_game_epoch.lock')
+
+
+def _acquire_file_lock(handle):
+    if fcntl is not None:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        return True
+    if msvcrt is not None:
+        deadline = time.time() + 5
+        while True:
+            try:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                return True
+            except OSError:
+                if time.time() >= deadline:
+                    return False
+                time.sleep(0.05)
+    return True
+
+
+def _release_file_lock(handle):
+    try:
+        if fcntl is not None:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        elif msvcrt is not None:
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    except OSError:
+        pass
+
+
+@contextlib.contextmanager
+def epoch_lock():
+    with _EPOCH_THREAD_LOCK:
+        handle = None
+        locked = False
+        try:
+            try:
+                handle = open(_EPOCH_LOCK_PATH, 'a+')
+                locked = _acquire_file_lock(handle)
+            except OSError:
+                handle = None
+                locked = False
+            yield
+        finally:
+            if handle is not None:
+                if locked:
+                    _release_file_lock(handle)
+                handle.close()
+
+
+def _atomic_write_json(path, obj):
+    directory = os.path.dirname(path) or '.'
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix='.tmp_epoch_', suffix='.json')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(obj, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _read_stored_epoch():
+    try:
+        stored = _read_json(EPOCH_FILE)
+        return stored if isinstance(stored, dict) else {}
+    except Exception:
+        return {}
+
+
+def game_context(fetched=_UNSET):
+    if fetched is _UNSET:
+        data, err = fetch_game()
+    else:
+        data, err = fetched
+    with epoch_lock():
+        stored = _read_stored_epoch()
+        now = int(time.time() * 1000)
+        if isinstance(data, dict) and isinstance(data.get('gameData'), dict):
+            g = data['gameData']
+            game_time = _num(g.get('gameTime'))
+            ap = data.get('activePlayer')
+            ap = ap if isinstance(ap, dict) else {}
+            players = data.get('allPlayers')
+            players = players if isinstance(players, list) else []
+            me, _identity = resolve_identity(ap, players)
+            champ = me.get('championName') if me is not None else None
+            if game_time is not None and 0 <= game_time < GAME_TIME_MAX:
+                start = now - int(game_time * 1000)
+                old_start = _num(stored.get('start'))
+                same_session = (
+                    old_start is not None
+                    and abs(old_start - start) <= EPOCH_DRIFT_MS
+                    and (not champ or not stored.get('champ') or stored.get('champ') == champ)
+                )
+                if same_session:
+                    rec = dict(stored)
+                    rec['start'] = int(old_start)
+                    rec['champ'] = champ or stored.get('champ')
+                else:
+                    rec = {'start': start, 'champ': champ, 'session': str(uuid.uuid4())}
+                rec.update({'observedAt': now, 'gameTime': game_time, 'end': now, 'source': 'live'})
+                needs_write = (
+                    not stored.get('start')
+                    or stored.get('session') != rec.get('session')
+                    or stored.get('start') != rec.get('start')
+                    or stored.get('champ') != rec.get('champ')
+                    or abs(now - int(_num(stored.get('observedAt')) or 0)) >= 5000
+                )
+                if needs_write:
+                    try:
+                        _atomic_write_json(EPOCH_FILE, rec)
+                    except OSError:
+                        pass
+                return rec
+        if stored.get('start'):
+            rec = dict(stored)
+            rec['source'] = 'stored'
+            rec['error'] = err
+            return rec
+        source = game_status(err) if err else 'no_game'
+        return {
+            'start': None,
+            'champ': None,
+            'session': None,
+            'source': source,
+            'error': err,
+        }
+
+
 def current_champion():
-    _, champ = game_context()
-    return champ
+    return game_context().get('champ')
 
 
 def build_plan():
-    lines = []
     try:
         with open(BUILD_FILE, 'r', encoding='utf-8-sig') as f:
             lines = f.read().splitlines()
-    except Exception:
-        return {'items': [], 'champ': None}
-    champ = current_champion()
+    except OSError as ex:
+        return {'items': [], 'champ': None, 'status': 'read_error', 'error': str(ex),
+                'assetVersion': ASSETS.get('version')}
+    ctx = game_context()
+    champ = ctx.get('champ')
     plan_line = None
     default_line = None
     for raw in lines:
@@ -148,250 +672,200 @@ def build_plan():
     if plan_line:
         for part in plan_line.split('->'):
             name = part.strip()
-            if name:
-                iid = find_item_id(name)
-                entry = {'name': name, 'id': iid}
-                if iid:
-                    entry['chain'] = chain_of(iid)
-                items.append(entry)
+            if not name:
+                continue
+            iid = find_item_id(name)
+            entry = {'name': name, 'id': iid}
+            if iid:
+                entry['chain'] = chain_of(iid)
+                candidates = ITEM_NAMES.get(name.lower(), [])
+                if len(candidates) > 1:
+                    entry['idCandidates'] = candidates
+            items.append(entry)
     if items and not any(it.get('id') for it in items):
         items = []
-    return {'items': items, 'champ': champ}
-
-
-def fetch_game():
-    try:
-        req = urllib.request.Request('https://127.0.0.1:2999/liveclientdata/allgamedata')
-        with urllib.request.urlopen(req, context=ctx, timeout=3) as r:
-            return json.loads(r.read().decode('utf-8'))
-    except Exception:
-        return None
-
-
-def pstat(p, name):
-    if name in p and p[name] is not None:
-        return p[name]
-    s = p.get('scores') or {}
-    return s.get(name)
-
-
-def same_player(p, ap):
-    for k in ('riotId', 'riotIdGameName', 'summonerName'):
-        if ap.get(k) and p.get(k) and str(ap[k]).lower() == str(p[k]).lower():
-            return True
-    return False
-
-
-def player_obj(p, mine, ap):
-    items = [{'id': i.get('itemID', 0), 'n': i.get('displayName', '')} for i in (p.get('items') or [])]
-    value = 0
-    for it in items:
-        value += ITEM_COSTS.get(it['n'], 0)
-    spells = []
-    ss = p.get('summonerSpells') or {}
-    for slot in ('summonerSpellOne', 'summonerSpellTwo'):
-        if ss.get(slot):
-            spells.append(ss[slot].get('displayName', ''))
-    name = p.get('riotId') or p.get('riotIdGameName') or p.get('summonerName') or ''
-    obj = {
-        'champ': p.get('championName'),
-        'key': CHAMPS.get(p.get('championName'), (p.get('championName') or '').replace(' ', '')),
-        'name': name,
-        'pos': p.get('position') or '',
-        'level': p.get('level', 0),
-        'k': pstat(p, 'kills'), 'd': pstat(p, 'deaths'), 'a': pstat(p, 'assists'),
-        'cs': pstat(p, 'creepScore'),
-        'items': items,
-        'spells': spells,
-        'team': p.get('team'),
-        'me': mine,
-        'value': value,
-    }
-    if mine:
-        obj['gold'] = ap.get('currentGold')
-        ab = ap.get('abilities')
-        lv = {}
-        if isinstance(ab, dict) and 'Q' in ab:
-            for k in ('Q', 'W', 'E', 'R'):
-                lv[k] = (ab.get(k) or {}).get('abilityLevel', 0)
-        elif isinstance(ab, list):
-            for x in ab:
-                lv[str(x.get('id', '?'))[:1]] = x.get('abilityLevel', 0)
-        obj['abil'] = lv
-        fr = ap.get('fullRunes') or {}
-        obj['keystone'] = (fr.get('keystone') or {}).get('displayName')
-        obj['tree1'] = (fr.get('primaryRuneTree') or {}).get('displayName')
-        obj['tree2'] = (fr.get('secondaryRuneTree') or {}).get('displayName')
-    return obj
-
-
-def build_state():
-    d = fetch_game()
-    if not d or 'gameData' not in d:
-        return {'inGame': False}
-    g = d['gameData']
-    ap = d.get('activePlayer') or {}
-    players = d.get('allPlayers') or []
-
-    me = None
-    for p in players:
-        if same_player(p, ap):
-            me = p
-            break
-
-    my_team = []
-    enemy_team = []
-    for p in players:
-        mine = (p is me)
-        o = player_obj(p, mine, ap)
-        if me and p.get('team') == me.get('team'):
-            my_team.append(o)
-        else:
-            enemy_team.append(o)
-    if me is None:
-        my_team = [player_obj(p, False, ap) for p in players if p.get('team') == 'ORDER']
-        enemy_team = [player_obj(p, False, ap) for p in players if p.get('team') == 'CHAOS']
-
-    events = []
-    dragon_kills = []
-    baron_kills = []
-    for e in (d.get('events') or {}).get('Events', []):
-        if e.get('EventTime') is None:
-            continue
-        events.append({
-            't': e.get('EventTime'),
-            'n': e.get('EventName'),
-            'dragon': e.get('DragonType'),
-            'killer': e.get('KillerName'),
-            'victim': e.get('VictimName'),
-            'turret': e.get('TurretKilled'),
-            'monster': e.get('MonsterType'),
-        })
-        if e.get('EventName') == 'DragonKill':
-            dragon_kills.append({'t': e.get('EventTime'), 'type': e.get('DragonType')})
-        elif e.get('EventName') == 'BaronKill':
-            baron_kills.append({'t': e.get('EventTime')})
-    events.sort(key=lambda x: x['t'])
-
     return {
-        'inGame': True,
-        'time': g.get('gameTime', 0),
-        'mode': g.get('gameMode', ''),
-        'map': g.get('mapNumber'),
-        'myTeam': my_team,
-        'enemyTeam': enemy_team,
-        'events': events[-10:],
-        'dragonKills': dragon_kills,
-        'baronKills': baron_kills,
+        'items': items,
+        'champ': champ,
+        'status': 'ok',
+        'gameSource': ctx.get('source'),
+        'sessionId': ctx.get('session'),
+        'assetVersion': ASSETS.get('version'),
     }
 
 
-EPOCH_FILE = os.path.join(ROOT, 'game_epoch.json')
-
-
-def game_context():
-    stored = {}
-    try:
-        with open(EPOCH_FILE, 'r', encoding='utf-8-sig') as f:
-            stored = json.load(f)
-    except Exception:
-        stored = {}
-    d = fetch_game()
-    if d and d.get('gameData'):
-        try:
-            gt = float(d['gameData'].get('gameTime') or 0)
-            start = int(time.time() * 1000 - gt * 1000)
-            ap = d.get('activePlayer') or {}
-            champ = None
-            for p in d.get('allPlayers') or []:
-                if same_player(p, ap):
-                    champ = p.get('championName')
-                    break
-            old_start = int(stored.get('start', 0) or 0)
-            if not old_start or abs(old_start - start) > 120000 or (champ and stored.get('champ') != champ):
-                stored = {'start': start, 'champ': champ}
-                try:
-                    with open(EPOCH_FILE, 'w', encoding='utf-8') as f:
-                        json.dump(stored, f)
-                except Exception:
-                    pass
-            return stored.get('start'), champ
-        except Exception:
-            pass
-    return stored.get('start'), stored.get('champ')
+def _db_connect():
+    con = sqlite3.connect('file:%s?mode=ro' % DB_PATH.replace('\\', '/'), uri=True, timeout=2)
+    con.row_factory = None
+    return con
 
 
 def build_cost():
-    epoch, _ = game_context()
-    if not epoch:
-        return {'ok': False}
+    ctx = game_context()
+    start = _num(ctx.get('start'))
+    if not start:
+        return {
+            'ok': False,
+            'status': ctx.get('source') or 'no_game',
+            'error': ctx.get('error'),
+            'cost': 0,
+            'lastTick': 0,
+            'ticks': 0,
+            'exact': False,
+            'estimate': True,
+            'sessionId': ctx.get('session'),
+            'window': None,
+        }
+    start = int(start)
+    end = int(_num(ctx.get('end')) or (time.time() * 1000))
+    if end < start:
+        end = start
     try:
-        con = sqlite3.connect('file:%s?mode=ro' % DB_PATH.replace('\\', '/'), uri=True, timeout=2)
-    except Exception:
-        return {'ok': False}
+        con = _db_connect()
+    except sqlite3.Error as ex:
+        return {'ok': False, 'status': 'db_error', 'error': str(ex), 'cost': 0, 'lastTick': 0,
+                'ticks': 0, 'exact': False, 'estimate': True, 'sessionId': ctx.get('session'),
+                'window': {'start': start, 'end': end}}
     try:
         cur = con.cursor()
-        cur.execute("SELECT COUNT(*), COALESCE(SUM(cost),0) FROM session "
-                    "WHERE agent='lol-coach' AND time_created >= ? AND tokens_input > 0", (epoch,))
+        columns = {row[1] for row in cur.execute('PRAGMA table_info(session)')}
+        if not columns:
+            return {'ok': False, 'status': 'schema_error', 'error': 'session table not found',
+                    'cost': 0, 'lastTick': 0, 'ticks': 0, 'exact': False, 'estimate': True,
+                    'sessionId': ctx.get('session'), 'window': {'start': start, 'end': end}}
+        required = {'agent', 'time_created', 'time_updated', 'cost', 'tokens_input'}
+        missing = sorted(required - columns)
+        if missing:
+            return {'ok': False, 'status': 'schema_error',
+                    'error': 'missing session columns: %s' % ','.join(missing),
+                    'cost': 0, 'lastTick': 0, 'ticks': 0, 'exact': False, 'estimate': True,
+                    'sessionId': ctx.get('session'), 'window': {'start': start, 'end': end}}
+        base = "agent='lol-coach' AND tokens_input > 0 AND time_created >= ? AND time_created <= ?"
+        base_params = [start, end]
+        where = base
+        params = list(base_params)
+        directory = os.path.abspath(ROOT)
+        directory_used = None
+        directory_degraded = False
+        if 'directory' in columns:
+            directory_where = base + " AND directory COLLATE NOCASE IN (?, ?)"
+            directory_params = base_params + [directory, directory.replace('\\', '/')]
+            cur.execute('SELECT COUNT(*), COALESCE(SUM(cost),0) FROM session WHERE ' + directory_where,
+                        directory_params)
+            filtered_ticks = cur.fetchone()[0]
+            if filtered_ticks:
+                where = directory_where
+                params = directory_params
+                directory_used = directory
+            else:
+                directory_degraded = True
+        cur.execute('SELECT COUNT(*), COALESCE(SUM(cost),0) FROM session WHERE ' + where, params)
         ticks, cost = cur.fetchone()
-        cur.execute("SELECT cost FROM session WHERE agent='lol-coach' AND tokens_input > 0 ORDER BY time_updated DESC LIMIT 1")
+        cur.execute('SELECT cost FROM session WHERE ' + where +
+                    ' ORDER BY time_updated DESC LIMIT 1', params)
         row = cur.fetchone()
         last = row[0] if row else 0
         return {
             'ok': True,
+            'status': 'ok',
             'cost': cost or 0,
             'lastTick': last or 0,
             'ticks': ticks,
+            'exact': False,
+            'estimate': True,
+            'sessionId': ctx.get('session'),
+            'window': {'start': start, 'end': end},
+            'directory': directory_used,
+            'directoryFilterDegraded': directory_degraded,
+            'source': ctx.get('source'),
         }
-    except Exception:
-        return {'ok': False}
+    except sqlite3.OperationalError as ex:
+        text = str(ex).lower()
+        status = 'schema_error' if ('no such table' in text or 'no such column' in text) else 'db_error'
+        return {'ok': False, 'status': status, 'error': str(ex), 'cost': 0, 'lastTick': 0,
+                'ticks': 0, 'exact': False, 'estimate': True, 'sessionId': ctx.get('session'),
+                'window': {'start': start, 'end': end}}
+    except sqlite3.Error as ex:
+        return {'ok': False, 'status': 'db_error', 'error': str(ex), 'cost': 0, 'lastTick': 0,
+                'ticks': 0, 'exact': False, 'estimate': True, 'sessionId': ctx.get('session'),
+                'window': {'start': start, 'end': end}}
     finally:
         con.close()
 
 
 def read_text_file(path):
-    text = ''
-    age = None
-    try:
-        with open(path, 'r', encoding='utf-8-sig', errors='replace') as f:
-            text = f.read().strip()
-        age = time.time() - os.path.getmtime(path)
-    except Exception:
-        pass
-    return text, age
+    last_text = ''
+    for _attempt in range(3):
+        try:
+            st1 = os.stat(path)
+            with open(path, 'r', encoding='utf-8-sig', errors='replace') as f:
+                text = f.read()
+            st2 = os.stat(path)
+        except FileNotFoundError:
+            return '', None, 'missing'
+        except OSError:
+            return '', None, 'error'
+        if st1.st_mtime_ns == st2.st_mtime_ns and st1.st_size == st2.st_size:
+            return text.strip(), max(0.0, time.time() - st2.st_mtime), 'ok'
+        last_text = text
+        time.sleep(0.05)
+    return last_text.strip(), None, 'unstable'
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
-    def _send(self, body, ctype):
-        self.send_response(200)
+    def _send(self, payload, ctype='application/json; charset=utf-8', code=200):
+        if not isinstance(payload, (bytes, bytearray)):
+            if isinstance(payload, str):
+                payload = payload.encode('utf-8')
+            else:
+                payload = json.dumps(payload).encode('utf-8')
+        self.send_response(code)
         self.send_header('Content-Type', ctype)
         self.send_header('Cache-Control', 'no-store')
-        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Content-Length', str(len(payload)))
         self.end_headers()
-        self.wfile.write(body)
+        self.wfile.write(payload)
 
     def do_GET(self):
-        if self.path in ('/', '/index.html'):
+        try:
+            self._route()
+        except Exception as ex:
+            try:
+                self._send({'status': 'error', 'error': type(ex).__name__, 'message': str(ex)}, code=500)
+            except Exception:
+                pass
+
+    def _route(self):
+        path = self.path.split('?', 1)[0].rstrip('/') or '/'
+        if path in ('/', '/index.html'):
             try:
                 with open(os.path.join(BASE, 'index.html'), 'rb') as f:
                     self._send(f.read(), 'text/html; charset=utf-8')
             except Exception as ex:
                 self.send_error(500, str(ex))
-        elif self.path.startswith('/api/game'):
-            self._send(json.dumps(build_state()).encode('utf-8'), 'application/json')
-        elif self.path.startswith('/api/coach'):
-            text, age = read_text_file(COACH_FILE)
-            self._send(json.dumps({'text': text, 'age': age}).encode('utf-8'), 'application/json')
-        elif self.path.startswith('/api/death'):
-            text, age = read_text_file(DEATH_FILE)
-            self._send(json.dumps({'text': text, 'age': age}).encode('utf-8'), 'application/json')
-        elif self.path.startswith('/api/cost'):
-            self._send(json.dumps(build_cost()).encode('utf-8'), 'application/json')
-        elif self.path.startswith('/api/plan'):
-            self._send(json.dumps(build_plan()).encode('utf-8'), 'application/json')
-        elif self.path.startswith('/api/highlight'):
-            names = [n for n in sorted(ITEMS.keys(), key=len, reverse=True) if len(n) >= 4 and n not in ('Ward', 'Wards')]
-            self._send(json.dumps({'items': names}).encode('utf-8'), 'application/json')
+        elif path == '/api/version':
+            self._send(version_info())
+        elif path == '/api/game':
+            state = build_state()
+            self._send(state, code=503 if state.get('status') == 'api_error' else 200)
+        elif path == '/api/coach':
+            text, age, status = read_text_file(COACH_FILE)
+            self._send({'text': text, 'age': age, 'status': status},
+                       code=500 if status == 'error' else 200)
+        elif path == '/api/death':
+            text, age, status = read_text_file(DEATH_FILE)
+            self._send({'text': text, 'age': age, 'status': status},
+                       code=500 if status == 'error' else 200)
+        elif path == '/api/cost':
+            cost = build_cost()
+            self._send(cost, code=503 if cost.get('status') in ('db_error', 'schema_error') else 200)
+        elif path == '/api/plan':
+            plan = build_plan()
+            self._send(plan, code=500 if plan.get('status') == 'read_error' else 200)
+        elif path == '/api/highlight':
+            names = [n for n in sorted(ITEMS.keys(), key=len, reverse=True)
+                     if len(n) >= 4 and n not in ('Ward', 'Wards')]
+            self._send({'items': names})
         else:
             self.send_error(404)
 
@@ -399,9 +873,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass
 
 
-if __name__ == '__main__':
+refresh_asset_state()
+
+
+def main():
     os.chdir(BASE)
+    ensure_assets()
+    refresh_asset_state()
     with http.server.ThreadingHTTPServer(('127.0.0.1', PORT), Handler) as httpd:
         print('LoL Coach UI running at http://127.0.0.1:%d' % PORT)
         print('Keep this window open. Close it to stop the UI server.')
         httpd.serve_forever()
+
+
+if __name__ == '__main__':
+    main()
