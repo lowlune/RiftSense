@@ -211,6 +211,25 @@
   .tlentry.objective b { color: var(--blue); }
   .ev b { color: var(--gold); font-family: "Cascadia Mono", Consolas, monospace; font-weight: 600; margin-right: 5px; }
 
+  .review { flex: 0 1 auto; min-height: 0; border: 1px solid rgba(200,170,110,.28); border-radius: 12px; background: linear-gradient(180deg, #0E1826, #0A1220); padding: 8px 12px 9px; display: flex; flex-direction: column; gap: 4px; }
+  .review-head { display: flex; align-items: center; gap: 7px; font-size: 10px; font-weight: 700; letter-spacing: .2em; color: var(--gold); text-transform: uppercase; }
+  .review-head > i { font-size: 13px; }
+  .review-head .rgame { color: var(--text); letter-spacing: .02em; text-transform: none; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .review-close { margin-left: auto; flex: 0 0 auto; background: transparent; border: 1px solid rgba(255,255,255,.08); color: var(--dim); border-radius: 6px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 11px; padding: 0; }
+  .review-close:hover { color: var(--gold); border-color: var(--line); }
+  .review-body { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 4px 22px; min-height: 0; overflow-y: auto; max-height: 24vh; }
+  .review-sec { font: 700 9.5px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .14em; color: var(--gold-dim); margin-bottom: 3px; }
+  .review-obs { list-style: none; display: flex; flex-direction: column; gap: 1px; }
+  .review-obs li { position: relative; padding-left: 11px; font-size: 12px; line-height: 1.4; color: var(--text); }
+  .review-obs li::before { content: "\00b7"; position: absolute; left: 1px; color: var(--dim); }
+  .review-na { margin-top: 3px; font-size: 10.5px; color: var(--dim); }
+  .review-prios { display: flex; flex-direction: column; gap: 5px; }
+  .review-prio { display: flex; gap: 7px; align-items: flex-start; }
+  .review-prio .rnum { flex: 0 0 auto; width: 15px; height: 15px; border-radius: 50%; background: rgba(200,170,110,.16); border: 1px solid rgba(200,170,110,.4); color: var(--gold); font: 700 9px/13px "Cascadia Mono", Consolas, monospace; text-align: center; }
+  .review-prio .rtitle { font-weight: 600; font-size: 12.5px; }
+  .review-prio .rfocus { font-size: 11.5px; color: var(--text); }
+  .review-prio .revid { font-size: 10px; color: var(--dim); }
+
   @media (max-height: 880px) {
     body { padding: 6px 10px 7px; }
     .shell { gap: 5px; }
@@ -224,6 +243,8 @@
     .items img { width: 15px; height: 15px; }
     .spells img { width: 14px; height: 14px; }
     .eventsline { font-size: 10.5px; padding: 4px 14px 5px; }
+    .review-obs li, .review-prio .rfocus { font-size: 11.5px; }
+    .review-body { max-height: 20vh; }
   }
 
   @media (max-width: 1150px) {
@@ -231,6 +252,7 @@
     .vdiv { display: none; }
     #coach { max-height: 38vh; }
     .teams { height: 100%; }
+    .review-body { grid-template-columns: 1fr; max-height: 30vh; }
   }
 
   @media (max-width: 720px) {
@@ -274,6 +296,25 @@
     <div class="bitems" id="buildItems"></div>
     <span class="bpurchase" id="buildPurchase" style="display:none"></span>
     <span class="berr" id="buildErr"></span>
+  </div>
+
+  <div class="review" id="reviewPanel" style="display:none">
+    <div class="review-head">
+      <i class="ph-fill ph-flag-checkered"></i>POST-GAME REVIEW
+      <span class="rgame" id="reviewGame"></span>
+      <button class="review-close" id="reviewClose" title="dismiss this review"><i class="ph-fill ph-x"></i></button>
+    </div>
+    <div class="review-body">
+      <div>
+        <div class="review-sec">OBSERVED</div>
+        <ul class="review-obs" id="reviewObs"></ul>
+        <div class="review-na" id="reviewNa"></div>
+      </div>
+      <div>
+        <div class="review-sec">PRIORITIES</div>
+        <div class="review-prios" id="reviewPrios"></div>
+      </div>
+    </div>
   </div>
 
   <div class="slab">
@@ -1098,6 +1139,7 @@ function renderIdle(kind, msg){
   document.getElementById('idleMsg').innerHTML = esc(msg);
   document.querySelector('.teams').style.display = 'none';
   document.querySelector('.shell').classList.remove('stale');
+  renderReview();
   updateHealthUI(true);
 }
 
@@ -1139,6 +1181,7 @@ function render(s){
   const mode = typeof s.mode === 'string' && s.mode ? s.mode : 'live';
   if (!teams.resolved) setStatus('wait', 'live · ' + mode + ' · identity unresolved');
   else setStatus('live', 'live · ' + mode);
+  renderReview();
 }
 
 function handleGame(j){
@@ -1383,6 +1426,9 @@ async function pollPurchase(){
 let tlOpen = false;
 let tlAvailable = null;
 let lastTimeline = null;
+let reviewAvailable = null;
+let lastReview = null;
+let reviewDismissedGame = null;
 
 function tlClock(v){
   const n = num(v);
@@ -1439,6 +1485,69 @@ async function pollTimeline(){
     lastTimeline = j;
     renderTimeline();
   } catch (e) { /* keep the last timeline view */ }
+}
+
+function reviewGameLabel(j){
+  const g = isObj(j.game) ? j.game : {};
+  const champ = typeof g.champ === 'string' && g.champ ? g.champ : 'unknown champion';
+  const mode = typeof g.mode === 'string' && g.mode ? g.mode : '';
+  const dur = num(g.durationSec);
+  const id = num(g.id);
+  return champ + (mode ? ' · ' + mode : '') + (dur != null ? ' · ' + fmt(dur) : '')
+    + (id != null ? ' · game #' + Math.round(id) : '');
+}
+
+function renderReview(){
+  const panel = document.getElementById('reviewPanel');
+  if (!panel) return;
+  const j = lastReview;
+  const active = !!(state.inGame && num(state.time) != null);
+  const dismissed = j && isObj(j.game) && reviewDismissedGame === j.game.id;
+  if (!j || !j.ok || active || dismissed || !isObj(j.game)) { panel.style.display = 'none'; return; }
+  document.getElementById('reviewGame').textContent = reviewGameLabel(j);
+  const obs = (Array.isArray(j.observations) ? j.observations : [])
+    .filter(isObj)
+    .map(o => typeof o.text === 'string' ? o.text : '')
+    .filter(t => t);
+  const obsEl = document.getElementById('reviewObs');
+  obsEl.innerHTML = obs.length
+    ? obs.map(t => `<li>${highlight(t.slice(0, 400))}</li>`).join('')
+    : '<li>no observations recorded</li>';
+  const na = (Array.isArray(j.unavailable) ? j.unavailable : [])
+    .filter(t => typeof t === 'string' && t)
+    .slice(0, 8);
+  const naEl = document.getElementById('reviewNa');
+  naEl.textContent = na.length ? 'not observed: ' + na.join(' ') : '';
+  const prios = (Array.isArray(j.priorities) ? j.priorities : []).filter(isObj).slice(0, 3);
+  const priosEl = document.getElementById('reviewPrios');
+  priosEl.innerHTML = prios.map((p, i) => {
+    const title = typeof p.title === 'string' ? p.title : '';
+    const focus = typeof p.focus === 'string' ? p.focus : '';
+    const evidence = (Array.isArray(p.evidence) ? p.evidence : [])
+      .filter(t => typeof t === 'string' && t).slice(0, 3);
+    return `<div class="review-prio"><span class="rnum">${i + 1}</span><div>` +
+      `<div class="rtitle">${esc(title)}</div>` +
+      (focus ? `<div class="rfocus">${highlight(focus)}</div>` : '') +
+      (evidence.length ? `<div class="revid">evidence: ${esc(evidence.join(' · '))}</div>` : '') +
+      '</div></div>';
+  }).join('') || '<div class="review-na">no priorities generated</div>';
+  panel.style.display = 'flex';
+}
+
+async function pollReview(){
+  try {
+    const r = await fetchJson('/api/review/latest', 8000);
+    if (r.status === 404) {
+      reviewAvailable = false;
+      lastReview = null;
+      renderReview();
+      return;
+    }
+    reviewAvailable = true;
+    if (r.badJson || !isObj(r.json)) { lastReview = null; renderReview(); return; }
+    lastReview = r.json;
+    renderReview();
+  } catch (e) { /* keep the last review on transport errors */ }
 }
 
 async function pollHighlight(){
@@ -1564,9 +1673,15 @@ scheduleLoop(pollCost, 5000);
 scheduleLoop(pollPlan, 10000);
 scheduleLoop(pollPurchase, 5000);
 scheduleLoop(pollTimeline, 5000);
+scheduleLoop(pollReview, 15000);
 scheduleLoop(pollHighlight, 60000);
 const tlToggleEl = document.getElementById('tlToggle');
 if (tlToggleEl) tlToggleEl.addEventListener('click', () => { tlOpen = !tlOpen; renderTimeline(); });
+const reviewCloseEl = document.getElementById('reviewClose');
+if (reviewCloseEl) reviewCloseEl.addEventListener('click', () => {
+  if (lastReview && isObj(lastReview.game)) reviewDismissedGame = lastReview.game.id;
+  renderReview();
+});
 setInterval(updateDeathRing, 1000);
 setInterval(tickClock, 250);
 </script>
