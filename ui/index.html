@@ -13,10 +13,10 @@
     --panel2: #101A2C;
     --line: rgba(200,170,110,.22);
     --gold: #C8AA6E;
-    --gold-dim: #8A7448;
+    --gold-dim: #A78B55;
     --text: #EAE4D4;
-    --dim: #7E8998;
-    --faint: #3c4450;
+    --dim: #8B96A6;
+    --faint: #75808F;
     --blue: #4D9DE0;
     --red: #E05D6F;
     --green: #4FCB7C;
@@ -32,48 +32,62 @@
     overflow: hidden;
   }
   .shell { height: 100%; max-width: 1600px; margin: 0 auto; display: flex; flex-direction: column; gap: 7px; min-height: 0; }
+  [hidden] { display: none !important; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  button:focus-visible, a:focus-visible, textarea:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .iconbtn { min-width: 30px; min-height: 30px; background: transparent; border: 1px solid rgba(255,255,255,.1); color: var(--dim); border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; padding: 0 6px; }
+  .iconbtn:hover { color: var(--gold); border-color: var(--line); }
+  .iconbtn[aria-pressed="true"] { color: var(--gold); border-color: var(--line); }
+  .iconbtn .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); display: none; margin-left: 3px; }
+  .iconbtn.has-issue .dot { display: inline-block; }
   i[class^="ph"], i[class*=" ph"] { line-height: 1; display: inline-block; }
   ::-webkit-scrollbar { width: 7px; height: 7px; }
   ::-webkit-scrollbar-thumb { background: rgba(200,170,110,.22); border-radius: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
 
-  .topbar { flex: 0 0 auto; display: flex; align-items: center; flex-wrap: wrap; row-gap: 4px; gap: 15px; padding: 1px 6px 6px; border-bottom: 1px solid rgba(255,255,255,.07); }
+  .topbar { flex: 0 0 auto; display: flex; align-items: center; flex-wrap: wrap; row-gap: 4px; gap: 12px; padding: 1px 6px 6px; border-bottom: 1px solid rgba(255,255,255,.07); }
   .topbar > * { min-width: 0; }
   #clock { font: 700 20px/1 "Cascadia Mono", Consolas, monospace; color: #fff; text-shadow: 0 0 14px rgba(77,157,224,.35); }
   #clock.stale { color: var(--amber); text-shadow: none; }
-  .livepill { display: flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700; letter-spacing: .14em; color: var(--dim); text-transform: uppercase; }
+  .livepill { display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; letter-spacing: .12em; color: var(--dim); text-transform: uppercase; }
   .livepill .st-live { color: var(--green); animation: pulse 2s infinite; }
   .livepill .st-wait { color: var(--amber); }
   .livepill .st-dead { color: var(--red); }
   .obj { display: flex; align-items: center; gap: 5px; }
   .obj i { font-size: 14px; color: var(--dim); }
-  .obj .lab { font-size: 8.5px; font-weight: 700; letter-spacing: .14em; color: var(--dim); }
+  .obj .lab { font-size: 10px; font-weight: 700; letter-spacing: .14em; color: var(--dim); }
   .obj .val { font: 600 12.5px/1 "Cascadia Mono", Consolas, monospace; }
   .obj.up .val, .obj.up i { color: var(--green); }
   .obj.soon .val, .obj.soon i { color: var(--amber); animation: pulse 1.4s infinite; }
   .obj.gold i { color: var(--gold); }
   .tspacer { flex: 1 1 auto; }
-  #summoner { font-size: 12px; color: var(--text); max-width: 32vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #summoner { font-size: 12.5px; color: var(--text); max-width: 26vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .modetabs { display: inline-flex; gap: 2px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 9px; padding: 2px; }
+  .mode-tab { min-height: 26px; background: transparent; border: none; color: var(--dim); font-size: 10.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; padding: 0 10px; border-radius: 7px; cursor: pointer; }
+  .mode-tab:hover { color: var(--text); }
+  .mode-tab[aria-selected="true"] { background: rgba(200,170,110,.16); color: var(--gold); }
+  .detailspanel { flex: 0 0 auto; display: flex; align-items: center; flex-wrap: wrap; row-gap: 5px; gap: 8px 12px; padding: 6px 8px; border: 1px solid rgba(255,255,255,.07); border-radius: 10px; background: rgba(8,16,28,.6); font-size: 11px; }
   .hcost { display: flex; align-items: baseline; gap: 6px; }
-  .hcost .amount { font: 700 14.5px/1 "Cascadia Mono", Consolas, monospace; color: var(--gold); }
-  .hcost .sub { font-size: 9.5px; color: var(--dim); }
-  .audiostate { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
+  .hcost .amount { font: 700 13px/1 "Cascadia Mono", Consolas, monospace; color: var(--gold); }
+  .hcost .sub { font-size: 10.5px; color: var(--dim); }
+  .audiostate { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
   .audiostate.on { color: var(--green); }
   .audiostate.blocked { color: var(--amber); }
   .audiostate.tap { color: var(--dim); }
   .audiostate.off { color: var(--faint); }
-  .diag { display: none; font-size: 9.5px; color: var(--amber); white-space: nowrap; }
+  .diag { display: none; font-size: 10.5px; color: var(--amber); white-space: nowrap; }
   .diag.show { display: inline; }
-  .mutebtn { background: transparent; border: 1px solid rgba(255,255,255,.08); color: var(--dim); border-radius: 7px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 13px; }
+  .mutebtn { background: transparent; border: 1px solid rgba(255,255,255,.1); color: var(--dim); border-radius: 7px; min-width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 13px; padding: 0 5px; }
   .mutebtn:hover { color: var(--gold); border-color: var(--line); }
+  .mutebtn[aria-pressed="true"] { color: var(--gold); border-color: var(--line); }
   .mutebtn.off { color: var(--faint); }
   .mutebtn:disabled { cursor: default; opacity: .55; }
-  .ovlbtn { display: inline-flex; align-items: center; height: 26px; padding: 0 8px; border: 1px solid rgba(255,255,255,.08); border-radius: 7px; color: var(--dim); font-size: 9px; font-weight: 700; letter-spacing: .12em; text-decoration: none; }
+  .ovlbtn { display: inline-flex; align-items: center; height: 28px; padding: 0 8px; border: 1px solid rgba(255,255,255,.1); border-radius: 7px; color: var(--dim); font-size: 10px; font-weight: 700; letter-spacing: .12em; text-decoration: none; }
   .ovlbtn:hover { color: var(--gold); border-color: var(--line); }
   .audiostate.voice-on { color: var(--blue); }
   .audiostate.voice-off, .audiostate.nosup { color: var(--faint); }
   .health { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
-  .hbadge { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); border: 1px solid rgba(255,255,255,.08); border-radius: 7px; padding: 2px 6px; white-space: nowrap; }
+  .hbadge { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); border: 1px solid rgba(255,255,255,.08); border-radius: 7px; padding: 2px 6px; white-space: nowrap; }
   .hbadge i { font-size: 11px; }
   .hbadge.st-live { color: var(--green); border-color: rgba(79,203,124,.32); }
   .hbadge.st-wait { color: var(--amber); border-color: rgba(232,180,74,.3); }
@@ -86,7 +100,7 @@
   .ptitle .age.ok, #planStat.ok, #costAge.ok { color: var(--green); }
   .ptitle .age.warn, #planStat.warn, #costAge.warn { color: var(--amber); }
   .ptitle .age.err, #planStat.err, #costAge.err { color: var(--red); }
-  .planstat { font-size: 9px; font-weight: 700; letter-spacing: .08em; color: var(--dim); white-space: nowrap; }
+  .planstat { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; color: var(--dim); white-space: nowrap; }
   .planstat.ok { color: var(--green); }
   .planstat.warn { color: var(--amber); }
   .planstat.err { color: var(--red); }
@@ -97,9 +111,9 @@
   @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }
 
   .buildstrip { flex: 0 0 auto; display: flex; align-items: center; flex-wrap: wrap; row-gap: 4px; gap: 10px; padding: 0 6px; }
-  .buildstrip .blabel { display: flex; align-items: center; gap: 5px; font-size: 9px; font-weight: 700; letter-spacing: .2em; color: var(--gold-dim); }
+  .buildstrip .blabel { display: flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700; letter-spacing: .2em; color: var(--gold-dim); }
   .buildstrip .blabel i { font-size: 12px; }
-  .berr { font-size: 9.5px; color: var(--red); }
+  .berr { font-size: 11px; color: var(--red); }
   .bitems { display: flex; align-items: center; gap: 4px; overflow-x: auto; overflow-y: hidden; min-width: 0; flex: 1 1 auto; }
   .bitem { position: relative; flex: 0 0 auto; }
   .bitem img { width: 23px; height: 23px; border-radius: 5px; border: 1px solid rgba(255,255,255,.10); background: #0a1220; display: block; }
@@ -107,16 +121,59 @@
   .bitem.next img { border-color: var(--gold); box-shadow: 0 0 8px rgba(200,170,110,.4); }
   .bitem.cur img { border-color: rgba(255,255,255,.18); }
   .bitem.todo img { opacity: .45; }
-  .bcomplete { font-size: 9.5px; color: var(--green); letter-spacing: .08em; }
+  .bcomplete { font-size: 10.5px; color: var(--green); letter-spacing: .08em; }
   .bitem .chk { position: absolute; right: -3px; bottom: -3px; background: var(--green); color: #06210f; border-radius: 50%; width: 12px; height: 12px; font-size: 8px; display: flex; align-items: center; justify-content: center; }
   .barrow { color: var(--faint); font-size: 11px; }
-  .bpurchase { display: flex; align-items: center; gap: 6px; font-size: 9.5px; color: var(--dim); white-space: nowrap; }
+  .bpurchase { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--dim); white-space: nowrap; }
   .bpurchase .gnext { font: 700 10.5px/1 "Cascadia Mono", Consolas, monospace; color: var(--gold); }
   .bpurchase .bbuy { font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--green); }
   .bpurchase.canbuy .gnext { color: var(--green); }
 
+  .actionslot { flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px; padding: 9px 12px; border: 1px solid rgba(200,170,110,.42); border-left: 4px solid var(--gold); border-radius: 10px; background: linear-gradient(90deg, rgba(200,170,110,.17), rgba(200,170,110,.03)); }
+  .actionslot[data-kind="death"] { border-color: rgba(224,93,111,.5); border-left-color: var(--red); background: linear-gradient(90deg, rgba(224,93,111,.18), rgba(224,93,111,.02)); }
+  .actionslot[data-kind="objective"] { border-color: rgba(77,157,224,.45); border-left-color: var(--blue); background: linear-gradient(90deg, rgba(77,157,224,.15), rgba(77,157,224,.02)); }
+  .aslot-head { display: flex; align-items: baseline; gap: 8px; font-size: 10.5px; font-weight: 700; letter-spacing: .16em; color: var(--gold); text-transform: uppercase; }
+  .actionslot[data-kind="death"] .aslot-head { color: #FF9A9A; }
+  .actionslot[data-kind="objective"] .aslot-head { color: var(--blue); }
+  .aslot-head .asrc { color: var(--dim); letter-spacing: .04em; text-transform: none; font-weight: 400; font-size: 10.5px; }
+  .aslot-head .aage { margin-left: auto; color: var(--dim); letter-spacing: .02em; text-transform: none; font-weight: 400; font-size: 11px; }
+  .aslot-head .aage.warn { color: var(--amber); }
+  .aslot-head .aage.err { color: var(--red); }
+  .aslot-text { font-size: 21px; line-height: 1.3; font-weight: 600; color: var(--text); }
+  .aslot-empty { color: var(--dim); font-style: italic; font-size: 13px; }
+
+  .drawer { flex: 0 0 auto; padding: 0 6px; }
+  .disclosure { min-height: 26px; display: inline-flex; align-items: center; gap: 5px; background: transparent; border: 1px solid rgba(255,255,255,.1); color: var(--dim); border-radius: 7px; padding: 3px 9px; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
+  .disclosure:hover { color: var(--gold); border-color: var(--line); }
+  .disclosure[aria-expanded="true"] { color: var(--gold); border-color: var(--line); }
+  .drawerbody { margin-top: 5px; border: 1px solid rgba(255,255,255,.07); border-radius: 9px; background: rgba(8,16,28,.65); padding: 7px 10px; }
+  .histlist { list-style: none; display: flex; flex-direction: column; gap: 3px; max-height: 150px; overflow-y: auto; }
+  .histlist li { font-size: 12px; color: var(--text); }
+  .histlist .htime { color: var(--dim); font-family: "Cascadia Mono", Consolas, monospace; font-size: 11px; margin-right: 7px; }
+  .histlist .hkind { display: inline-block; min-width: 74px; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--gold-dim); }
+  .histlist .hkind.death { color: #FF9A9A; }
+  .histlist .hkind.objective { color: var(--blue); }
+  .caption { margin-top: 5px; padding-top: 5px; border-top: 1px dashed rgba(255,255,255,.08); font-size: 11.5px; color: var(--dim); }
+  .caption b { color: var(--text); font-weight: 600; }
+
+  .purchasepanel { flex: 0 0 auto; display: flex; flex-direction: column; gap: 3px; padding: 6px 6px 0; }
+  .pphead { font-size: 10.5px; font-weight: 700; letter-spacing: .14em; color: var(--gold-dim); text-transform: uppercase; }
+  .ppline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+  .purchasepanel .bpurchase { font-size: 17px; color: var(--text); white-space: normal; }
+  .purchasepanel .bpurchase .gnext { font: 700 17px/1.25 "Cascadia Mono", Consolas, monospace; color: var(--gold); }
+  .purchasepanel .bpurchase .bbuy { font-size: 12px; }
+  .purchasepanel .berr { font-size: 11.5px; }
+  .ppdetails { margin-top: 2px; font-size: 12px; color: var(--dim); display: flex; flex-direction: column; gap: 3px; }
+  .ppdetails .pprow { display: flex; gap: 7px; align-items: flex-start; }
+  .ppdetails .pprow::before { content: "\00b7"; color: var(--gold-dim); }
+  .objprep { flex: 0 0 auto; padding: 0 6px; font-size: 12.5px; color: var(--amber); }
+  .objprep[hidden] { display: none; }
+
   #deathWrap { flex: 0 0 auto; border-bottom: 1px dashed rgba(224,93,111,.35); margin-bottom: 4px; padding-bottom: 6px; }
-  .deathhead { display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 700; letter-spacing: .18em; color: #FF9A9A; text-transform: uppercase; }
+  .deathhead .pinbtn { margin-left: 0; min-width: 26px; min-height: 26px; background: transparent; border: 1px solid rgba(255,255,255,.12); color: var(--dim); border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; padding: 0; }
+  .deathhead .pinbtn[aria-pressed="true"] { color: var(--gold); border-color: var(--line); }
+  .deathhead .pinned { color: var(--gold); font-size: 10px; letter-spacing: .04em; text-transform: none; font-weight: 600; }
+  .deathhead { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: .18em; color: #FF9A9A; text-transform: uppercase; }
   .deathhead i { font-size: 13px; }
   .deathhead .age { margin-left: auto; color: var(--dim); letter-spacing: .04em; text-transform: none; font-weight: 400; font-size: 10px; }
   #death { padding-top: 6px; display: flex; flex-direction: column; gap: 5px; }
@@ -128,7 +185,7 @@
   .dloading i { animation: spin 1s linear infinite; font-size: 14px; color: #FF9A9A; }
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   .dsec { display: flex; flex-direction: column; gap: 3px; margin-top: 1px; }
-  .dsec .dsec-tag { display: flex; align-items: center; gap: 5px; font: 700 9.5px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .1em; }
+  .dsec .dsec-tag { display: flex; align-items: center; gap: 5px; font: 700 10.5px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .1em; }
   .dsec.obs .dsec-tag { color: #7FD1A8; }
   .dsec.hyp .dsec-tag { color: var(--amber); }
   .dlist { list-style: none; display: flex; flex-direction: column; gap: 2px; margin: 0; }
@@ -145,7 +202,7 @@
   }
   .vdiv { background: linear-gradient(180deg, transparent, rgba(200,170,110,.26), transparent); }
   .pane { min-height: 0; display: flex; flex-direction: column; padding: 10px 16px 8px; }
-  .ptitle { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; font-size: 10px; font-weight: 700; letter-spacing: .22em; color: var(--gold); text-transform: uppercase; }
+  .ptitle { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; font-size: 10.5px; font-weight: 700; letter-spacing: .22em; color: var(--gold); text-transform: uppercase; }
   .ptitle i { font-size: 14px; }
   .ptitle .age { margin-left: auto; color: var(--dim); letter-spacing: .04em; text-transform: none; font-weight: 400; font-size: 10px; }
   .ptitle.blue, .pane.blue .ptitle { color: var(--blue); }
@@ -154,7 +211,7 @@
   #coach { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-top: 7px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 22px; align-content: start; }
   .chead { grid-column: 1 / -1; color: #B9C2D0; font-size: 12.5px; padding-bottom: 5px; border-bottom: 1px dashed rgba(255,255,255,.08); margin-bottom: 2px; }
   .crow { display: flex; gap: 8px; align-items: flex-start; }
-  .ctag { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; font: 700 9.5px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .08em; padding: 4px 7px; border-radius: 6px; background: rgba(255,255,255,.05); white-space: nowrap; }
+  .ctag { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; font: 700 10.5px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .08em; padding: 4px 7px; border-radius: 6px; background: rgba(255,255,255,.05); white-space: nowrap; }
   .ctag i { font-size: 11px; }
   .ctext { font-size: 13px; line-height: 1.5; color: var(--text); }
   .crow.threat .ctag { color: #FF8A8A; background: rgba(224,93,111,.14); }
@@ -166,6 +223,15 @@
   .donow .ctag { color: #131313; background: var(--gold); }
   .donow .ctext { font-weight: 600; font-size: 13.5px; }
   .coach-wait { grid-column: 1 / -1; color: var(--dim); font-style: italic; padding: 4px 0; }
+  .coachmore { grid-column: 1 / -1; }
+  .coachmore > summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px; min-height: 26px; color: var(--dim); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; border: 1px solid rgba(255,255,255,.09); border-radius: 7px; padding: 3px 9px; }
+  .coachmore > summary::-webkit-details-marker { display: none; }
+  .coachmore > summary:hover { color: var(--gold); border-color: var(--line); }
+  .coachmore[open] > summary { color: var(--gold); border-color: var(--line); margin-bottom: 5px; }
+  .coachmore .cgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 22px; }
+  .dsec details > summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 5px; min-height: 26px; font: 700 10.5px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .1em; color: var(--amber); }
+  .dsec details > summary::-webkit-details-marker { display: none; }
+  .dsec details[open] > summary { margin-bottom: 3px; }
 
   .teams { display: grid; grid-template-columns: 1fr 1fr; height: 100%; }
   .idlemsg { display: none; align-items: center; justify-content: center; height: 100%; color: var(--dim); font-size: 13.5px; text-align: center; }
@@ -187,23 +253,25 @@
   .prow img.champ { width: 26px; height: 26px; border-radius: 6px; display: block; background: #0a1220; }
   .pline { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
   .pname { font-weight: 600; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .lvl { font: 700 9.5px/1 "Cascadia Mono", Consolas, monospace; color: var(--gold); background: rgba(200,170,110,.1); border-radius: 4px; padding: 2px 4px; }
-  .pos { font-size: 8.5px; letter-spacing: .13em; color: var(--dim); text-transform: uppercase; }
-  .you { background: var(--gold); color: #131313; font-size: 8.5px; font-weight: 700; padding: 1px 5px; border-radius: 4px; letter-spacing: .08em; }
+  .lvl { font: 700 10.5px/1 "Cascadia Mono", Consolas, monospace; color: var(--gold); background: rgba(200,170,110,.1); border-radius: 4px; padding: 2px 4px; }
+  .pos { font-size: 10px; letter-spacing: .13em; color: var(--dim); text-transform: uppercase; }
+  .you { background: var(--gold); color: #131313; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 4px; letter-spacing: .08em; }
   .items { display: flex; gap: 2px; margin-top: 3px; flex-wrap: nowrap; overflow: hidden; }
-  .items img { width: 16px; height: 16px; border-radius: 3px; border: 1px solid rgba(255,255,255,.08); background: #0a1220; }
+  .items img { width: 18px; height: 18px; border-radius: 3px; border: 1px solid rgba(255,255,255,.08); background: #0a1220; }
   .spells { display: flex; gap: 2px; margin-left: 2px; }
-  .spells img { width: 15px; height: 15px; border-radius: 3px; opacity: .92; }
-  .mextra { font-size: 9.5px; color: var(--dim); margin-top: 2px; white-space: nowrap; overflow: hidden; }
+  .spells img { width: 17px; height: 17px; border-radius: 3px; opacity: .92; }
+  .mextra { font-size: 10.5px; color: var(--dim); margin-top: 2px; white-space: nowrap; overflow: hidden; }
   .kda { text-align: right; font: 600 12.5px/1.2 "Cascadia Mono", Consolas, monospace; white-space: nowrap; }
   .kda .k { color: var(--green); } .kda .d { color: var(--red); } .kda .a { color: var(--blue); }
-  .kda .cs { display: block; font-size: 9.5px; color: var(--dim); font-weight: 400; margin-top: 2px; }
+  .kda .kda-k, .kda .kda-d, .kda .kda-a { color: var(--dim); font-size: 9.5px; font-weight: 400; }
+  .kda .cs { display: block; font-size: 10.5px; color: var(--dim); font-weight: 400; margin-top: 2px; }
   .kda .gold { color: var(--gold); }
 
   .eventsline { grid-column: 1 / -1; display: flex; gap: 14px; white-space: nowrap; overflow: hidden; font-size: 11px; color: var(--dim); padding: 5px 16px 6px; border-top: 1px solid rgba(255,255,255,.06); mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); }
   .tlstrip { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 0 6px; font-size: 10.5px; color: var(--dim); min-height: 15px; }
-  .tlstrip .tllabel { display: flex; align-items: center; gap: 5px; font-size: 9px; font-weight: 700; letter-spacing: .16em; color: var(--gold-dim); cursor: pointer; user-select: none; white-space: nowrap; }
-  .tlstrip .tllabel:hover { color: var(--gold); }
+  .tlstrip .tllabel { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; font-size: 10px; font-weight: 700; letter-spacing: .16em; color: var(--gold-dim); cursor: pointer; user-select: none; white-space: nowrap; background: transparent; border: 1px solid rgba(255,255,255,.09); border-radius: 7px; padding: 2px 8px; }
+  .tlstrip .tllabel:hover { color: var(--gold); border-color: var(--line); }
+  .tlstrip .tllabel[aria-expanded="true"] { color: var(--gold); border-color: var(--line); }
   .tlstrip .tlbudget b { color: var(--gold); font-family: "Cascadia Mono", Consolas, monospace; font-weight: 600; }
   .tlstrip .tlbudget i { font-style: normal; color: var(--dim); }
   .tlstrip .tllist { display: none; }
@@ -217,39 +285,66 @@
   .ev b { color: var(--gold); font-family: "Cascadia Mono", Consolas, monospace; font-weight: 600; margin-right: 5px; }
 
   .review { flex: 0 1 auto; min-height: 0; border: 1px solid rgba(200,170,110,.28); border-radius: 12px; background: linear-gradient(180deg, #0E1826, #0A1220); padding: 8px 12px 9px; display: flex; flex-direction: column; gap: 4px; }
-  .review-head { display: flex; align-items: center; gap: 7px; font-size: 10px; font-weight: 700; letter-spacing: .2em; color: var(--gold); text-transform: uppercase; }
+  .review-head { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 700; letter-spacing: .2em; color: var(--gold); text-transform: uppercase; }
   .review-head > i { font-size: 13px; }
   .review-head .rgame { color: var(--text); letter-spacing: .02em; text-transform: none; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .review-close { margin-left: auto; flex: 0 0 auto; background: transparent; border: 1px solid rgba(255,255,255,.08); color: var(--dim); border-radius: 6px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 11px; padding: 0; }
+  .review-close { margin-left: auto; flex: 0 0 auto; background: transparent; border: 1px solid rgba(255,255,255,.1); color: var(--dim); border-radius: 6px; min-width: 26px; min-height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px; padding: 0; }
   .review-close:hover { color: var(--gold); border-color: var(--line); }
-  .review-body { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 4px 22px; min-height: 0; overflow-y: auto; max-height: 24vh; }
-  .review-sec { font: 700 9.5px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .14em; color: var(--gold-dim); margin-bottom: 3px; }
+  .review-body { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 4px 22px; min-height: 0; }
+  .review-sec { font: 700 10.5px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .14em; color: var(--gold-dim); margin-bottom: 3px; }
   .review-obs { list-style: none; display: flex; flex-direction: column; gap: 1px; }
-  .review-obs li { position: relative; padding-left: 11px; font-size: 12px; line-height: 1.4; color: var(--text); }
+  .review-obs li { position: relative; padding-left: 11px; font-size: 12.5px; line-height: 1.4; color: var(--text); }
   .review-obs li::before { content: "\00b7"; position: absolute; left: 1px; color: var(--dim); }
-  .review-na { margin-top: 3px; font-size: 10.5px; color: var(--dim); }
+  .review-na { margin-top: 3px; font-size: 11.5px; color: var(--dim); }
   .review-prios { display: flex; flex-direction: column; gap: 5px; }
   .review-prio { display: flex; gap: 7px; align-items: flex-start; }
-  .review-prio .rnum { flex: 0 0 auto; width: 15px; height: 15px; border-radius: 50%; background: rgba(200,170,110,.16); border: 1px solid rgba(200,170,110,.4); color: var(--gold); font: 700 9px/13px "Cascadia Mono", Consolas, monospace; text-align: center; }
+  .review-prio .rnum { flex: 0 0 auto; width: 17px; height: 17px; border-radius: 50%; background: rgba(200,170,110,.16); border: 1px solid rgba(200,170,110,.4); color: var(--gold); font: 700 10px/15px "Cascadia Mono", Consolas, monospace; text-align: center; }
   .review-prio .rtitle { font-weight: 600; font-size: 12.5px; }
   .review-prio .rfocus { font-size: 11.5px; color: var(--text); }
-  .review-prio .revid { font-size: 10px; color: var(--dim); }
-  .trendstrip { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 0 6px; font-size: 10.5px; color: var(--dim); min-height: 15px; }
-  .trendstrip .trlabel { display: flex; align-items: center; gap: 5px; font-size: 9px; font-weight: 700; letter-spacing: .16em; color: var(--gold-dim); cursor: pointer; user-select: none; white-space: nowrap; }
-  .trendstrip .trlabel:hover { color: var(--gold); }
+  .review-prio .revid { font-size: 11px; color: var(--dim); }
+  .trendstrip { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 0 6px; font-size: 11px; color: var(--dim); min-height: 15px; }
+  .trendstrip .trlabel { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; font-size: 10px; font-weight: 700; letter-spacing: .16em; color: var(--gold-dim); cursor: pointer; user-select: none; white-space: nowrap; background: transparent; border: 1px solid rgba(255,255,255,.09); border-radius: 7px; padding: 2px 8px; }
+  .trendstrip .trlabel:hover { color: var(--gold); border-color: var(--line); }
+  .trendstrip .trlabel[aria-expanded="true"] { color: var(--gold); border-color: var(--line); }
   .trendstrip .trsum b { color: var(--gold); font-family: "Cascadia Mono", Consolas, monospace; font-weight: 600; }
   .trendstrip .trbody { display: none; }
   .trendstrip.open { flex-wrap: wrap; }
   .trendstrip.open .trbody { display: block; flex-basis: 100%; max-height: 130px; overflow-y: auto; padding: 3px 0 5px; border-top: 1px dashed rgba(255,255,255,.08); margin-top: 2px; }
   .trgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 4px 18px; }
   .trsec { min-width: 0; }
-  .trsec .trhead { font-size: 9px; font-weight: 700; letter-spacing: .14em; color: var(--gold-dim); text-transform: uppercase; margin-bottom: 2px; }
+  .trsec .trhead { font-size: 10.5px; font-weight: 700; letter-spacing: .14em; color: var(--gold-dim); text-transform: uppercase; margin-bottom: 2px; }
   .trrow { display: flex; justify-content: space-between; gap: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .trrow > span:last-child { color: var(--text); font-family: "Cascadia Mono", Consolas, monospace; }
   .trbar { height: 5px; border-radius: 3px; background: rgba(255,255,255,.06); overflow: hidden; margin: 1px 0 2px; }
   .trbar i { display: block; height: 100%; background: rgba(224,93,111,.55); }
-  .trnote { color: var(--faint); font-size: 9.5px; }
+  .trnote { color: var(--faint); font-size: 11px; }
   .trempty { color: var(--dim); font-style: italic; }
+
+  .view { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 7px; }
+  .view[hidden] { display: none; }
+  #reviewView, #setupView { overflow-y: auto; overflow-x: hidden; padding-right: 2px; }
+  #reviewView .tlstrip .tllist, #reviewView .trendstrip .trbody { max-height: none; overflow: visible; }
+  #reviewView .tlstrip.open .tllist { max-height: none; overflow: visible; }
+  .setupcard { border: 1px solid rgba(200,170,110,.2); border-radius: 12px; background: linear-gradient(180deg, #0E1826, #0A1220); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .setupcard h2 { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; letter-spacing: .18em; color: var(--gold); text-transform: uppercase; }
+  .setupcard p, .setupcard .note { font-size: 12px; color: var(--dim); line-height: 1.5; }
+  .setupgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px 18px; align-items: start; }
+  .audioctl { display: flex; flex-direction: column; gap: 7px; }
+  .audioctl label { display: grid; grid-template-columns: 90px minmax(0,1fr) 52px; gap: 8px; align-items: center; font-size: 12px; color: var(--dim); }
+  .audioctl input[type="range"] { width: 100%; accent-color: var(--gold); min-height: 24px; }
+  .audioctl select { background: #08101c; color: var(--text); border: 1px solid rgba(255,255,255,.14); border-radius: 7px; min-height: 26px; padding: 2px 6px; font-size: 12px; max-width: 100%; }
+  .audioctl .val { font-family: "Cascadia Mono", Consolas, monospace; font-size: 11.5px; color: var(--text); text-align: right; }
+  .audioctl .btnrow, .setupcard .btnrow { display: flex; flex-wrap: wrap; gap: 6px; }
+  .statusline { font-size: 12px; color: var(--dim); }
+  .statusline.ok { color: var(--green); }
+  .statusline.warn { color: var(--amber); }
+  .statusline.err { color: var(--red); }
+  .planload { font-size: 12px; color: var(--dim); }
+  .planload.warn { color: var(--amber); }
+  .planload.err { color: var(--red); }
+  .healthbig { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--dim); }
+  .healthbig .hrow { display: flex; gap: 6px; align-items: baseline; }
+  .healthbig .hrow b { color: var(--text); font-weight: 600; min-width: 74px; }
 
   .modal { position: fixed; inset: 0; background: rgba(2,6,12,.74); display: none; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
   .modal.show { display: flex; }
@@ -259,7 +354,7 @@
   .modalhead .x:hover { color: var(--text); }
   .modalnote { font-size: 11px; color: var(--dim); }
   .modalnote code { color: var(--gold); }
-  #planText { min-height: 280px; flex: 1 1 auto; resize: vertical; background: #08101c; color: var(--text); border: 1px solid rgba(255,255,255,.12); border-radius: 9px; padding: 9px 10px; font: 12.5px/1.5 "Cascadia Mono", Consolas, monospace; }
+  #planText { min-height: 180px; flex: 1 1 auto; resize: vertical; background: #08101c; color: var(--text); border: 1px solid rgba(255,255,255,.12); border-radius: 9px; padding: 9px 10px; font: 13px/1.5 "Cascadia Mono", Consolas, monospace; }
   #planText:focus { outline: none; border-color: var(--gold-dim); }
   .modalerr { min-height: 15px; font-size: 11px; color: var(--red); white-space: pre-wrap; }
   .modalstatus { font-size: 11px; color: var(--green); margin-right: auto; }
@@ -281,17 +376,24 @@
     .prow img.champ { width: 23px; height: 23px; }
     .items img { width: 15px; height: 15px; }
     .spells img { width: 14px; height: 14px; }
-    .eventsline { font-size: 10.5px; padding: 4px 14px 5px; }
-    .review-obs li, .review-prio .rfocus { font-size: 11.5px; }
-    .review-body { max-height: 20vh; }
+    .eventsline { font-size: 11px; padding: 4px 14px 5px; }
+    .review-obs li, .review-prio .rfocus { font-size: 12px; }
+    #planText { min-height: 140px; }
   }
 
   @media (max-width: 1150px) {
-    .slab { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; }
+    html, body { height: auto; min-height: 100%; }
+    body { overflow-y: auto; }
+    .shell { height: auto; min-height: 100vh; }
+    .slab { grid-template-columns: 1fr; grid-template-rows: auto auto auto; overflow: visible; }
     .vdiv { display: none; }
-    #coach { max-height: 38vh; }
-    .teams { height: 100%; }
-    .review-body { grid-template-columns: 1fr; max-height: 30vh; }
+    #coach { max-height: none; overflow-y: visible; }
+    .teams { height: auto; }
+    .tlist { overflow-y: visible; }
+    .review-body { grid-template-columns: 1fr; }
+    .view { min-height: 0; }
+    #liveView { min-height: 70vh; }
+    .eventsline { white-space: normal; flex-wrap: wrap; overflow: visible; mask-image: none; -webkit-mask-image: none; }
   }
 
   @media (max-width: 720px) {
@@ -304,6 +406,13 @@
     .teams { grid-template-columns: 1fr; }
     .tcol.enemy { border-left: none; border-top: 1px solid rgba(255,255,255,.06); }
     .eventsline { white-space: normal; flex-wrap: wrap; overflow: visible; mask-image: none; -webkit-mask-image: none; }
+    .aslot-text { font-size: 19px; }
+    .purchasepanel .bpurchase { font-size: 16px; }
+    .purchasepanel .bpurchase .gnext { font-size: 16px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
   }
 </style>
 </head>
@@ -312,104 +421,184 @@
   <div class="topbar">
     <div id="clock">--:--</div>
     <div class="livepill"><i class="ph-fill ph-broadcast st-wait" id="statIcon"></i><span id="statusText">connecting</span><span class="pill-age" id="gameAge"></span></div>
+    <div class="obj" id="objDragon"><i class="ph-fill ph-fire"></i><span class="lab">DRG</span><span class="val" id="dragonVal">--:--</span></div>
+    <div class="obj" id="objBaron"><i class="ph-fill ph-skull"></i><span class="lab">BRN</span><span class="val" id="baronVal">--:--</span></div>
+    <div class="obj gold" id="objPhase"><i class="ph-fill ph-clock"></i><span class="val" id="phaseVal">—</span></div>
+    <div class="tspacer"></div>
+    <div id="summoner">—</div>
+    <nav class="modetabs" role="tablist" aria-label="Dashboard mode">
+      <button class="mode-tab" id="modeLive" role="tab" aria-selected="true" aria-controls="liveView">Live</button>
+      <button class="mode-tab" id="modeReview" role="tab" aria-selected="false" aria-controls="reviewView" tabindex="-1">Review</button>
+      <button class="mode-tab" id="modeSetup" role="tab" aria-selected="false" aria-controls="setupView" tabindex="-1">Setup</button>
+    </nav>
+    <button class="mutebtn" id="muteBtn" aria-pressed="true" aria-label="sound effects" title="toggle sound"><i class="ph-fill ph-speaker-high" id="muteIcon"></i></button>
+    <span class="audiostate off" id="audioState">audio off</span>
+    <button class="mutebtn" id="voiceBtn" aria-pressed="false" aria-label="spoken coaching" title="toggle spoken coaching"><i class="ph-fill ph-speaker-slash" id="voiceIcon"></i></button>
+    <span class="audiostate voice-off" id="voiceState">voice off</span>
+    <button class="iconbtn" id="detailsToggle" aria-expanded="false" aria-controls="detailsPanel" aria-label="status details" title="status details"><i class="ph-fill ph-sliders-horizontal"></i><span class="dot"></span></button>
+  </div>
+  <div class="detailspanel" id="detailsPanel" hidden>
     <div class="health" id="health" title="">
       <span class="hbadge st-mute" id="hbConn"><i class="ph-fill ph-broadcast"></i><span id="hbConnText">connecting</span></span>
       <span class="hbadge st-mute" id="hbAge"><i class="ph-fill ph-timer"></i><span id="hbAgeText">age —</span></span>
       <span class="hbadge st-mute" id="hbPatch"><i class="ph-fill ph-tag"></i><span id="hbPatchText">patch —</span></span>
       <span class="hbadge st-mute" id="hbIdentity" style="display:none"><i class="ph-fill ph-user-circle"></i><span id="hbIdentityText">identity —</span></span>
     </div>
-    <div class="obj" id="objDragon"><i class="ph-fill ph-fire"></i><span class="lab">DRG</span><span class="val" id="dragonVal">--:--</span></div>
-    <div class="obj" id="objBaron"><i class="ph-fill ph-skull"></i><span class="lab">BRN</span><span class="val" id="baronVal">--:--</span></div>
-    <div class="obj gold" id="objPhase"><i class="ph-fill ph-clock"></i><span class="val" id="phaseVal">—</span></div>
-    <div class="tspacer"></div>
-    <div id="summoner">—</div>
-    <span class="diag" id="diag"></span>
     <div class="hcost"><span class="amount" id="costTotal">$—</span><span class="sub" id="costSub">—</span><span class="sub" id="costAge"></span></div>
-    <span class="audiostate off" id="audioState">audio off</span>
-    <button class="mutebtn" id="planEditBtn" title="edit build plan"><i class="ph-fill ph-hammer"></i></button>
-    <button class="mutebtn" id="muteBtn" title="toggle sound"><i class="ph-fill ph-speaker-high" id="muteIcon"></i></button>
-    <span class="audiostate voice-off" id="voiceState">voice off</span>
-    <button class="mutebtn" id="voiceBtn" title="toggle spoken coaching"><i class="ph-fill ph-speaker-slash" id="voiceIcon"></i></button>
+    <span class="diag" id="diag"></span>
     <a class="ovlbtn" id="overlayBtn" href="/overlay" target="_blank" rel="noopener" title="read-only OBS / second-monitor overlay">OVERLAY</a>
   </div>
 
-  <div class="buildstrip" id="buildStrip" style="display:none">
-    <span class="blabel"><i class="ph-fill ph-hammer"></i>BUILD</span>
-    <span class="planstat" id="planStat"></span>
-    <span class="hbadge st-mute" id="packBadge" style="display:none"></span>
-    <div class="bitems" id="buildItems"></div>
-    <span class="bpurchase" id="buildPurchase" style="display:none"></span>
-    <span class="berr" id="buildErr"></span>
-  </div>
+  <main id="liveView" class="view" role="tabpanel" aria-labelledby="modeLive">
+    <div id="liveAnnounce" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 
-  <div class="review" id="reviewPanel" style="display:none">
-    <div class="review-head">
-      <i class="ph-fill ph-flag-checkered"></i>POST-GAME REVIEW
-      <span class="rgame" id="reviewGame"></span>
-      <button class="review-close" id="reviewClose" title="dismiss this review"><i class="ph-fill ph-x"></i></button>
-    </div>
-    <div class="review-body">
-      <div>
-        <div class="review-sec">OBSERVED</div>
-        <ul class="review-obs" id="reviewObs"></ul>
-        <div class="review-na" id="reviewNa"></div>
-      </div>
-      <div>
-        <div class="review-sec">PRIORITIES</div>
-        <div class="review-prios" id="reviewPrios"></div>
-      </div>
-    </div>
-  </div>
+    <section class="actionslot" id="actionSlot" data-kind="coach" aria-label="Primary action" hidden>
+      <div class="aslot-head"><i class="ph-fill ph-lightning"></i><span id="actionKind">Do this now</span><span class="asrc" id="actionSource"></span><span class="aage" id="actionAge"></span><span class="aage" id="actionExpiry"></span></div>
+      <div class="aslot-text" id="actionText"></div>
+    </section>
 
-  <div class="slab">
-    <div class="pane">
-      <div class="ptitle"><i class="ph-fill ph-brain"></i>Coach readout <span class="age" id="coachAge"></span></div>
-      <div id="deathWrap" style="display:none">
-        <div class="deathhead"><i class="ph-fill ph-skull"></i>Death report
-          <svg id="deathRing" width="15" height="15" viewBox="0 0 15 15" style="margin-left:2px"><circle cx="7.5" cy="7.5" r="6" fill="none" stroke="rgba(224,93,111,.25)" stroke-width="2"/><circle id="deathArc" cx="7.5" cy="7.5" r="6" fill="none" stroke="#E05D6F" stroke-width="2" stroke-dasharray="37.7" stroke-dashoffset="0" stroke-linecap="round" transform="rotate(-90 7.5 7.5)"/></svg>
-          <span class="age" id="deathAge"></span></div>
-        <div id="death"></div>
+    <div class="drawer">
+      <button class="disclosure" id="actionDrawerToggle" aria-expanded="false" aria-controls="actionDrawerBody"><i class="ph-fill ph-clock-counter-clockwise"></i>advice history <span id="actionCount"></span></button>
+      <div class="drawerbody" id="actionDrawerBody" hidden>
+        <ol class="histlist" id="actionHistory"><li>no advice recorded yet</li></ol>
+        <div class="caption" id="ttsCaption">spoken captions appear here</div>
       </div>
-      <div id="coach"><div class="coach-wait">Waiting for the first coach tick…</div></div>
     </div>
-    <div class="vdiv"></div>
-    <div class="pane" style="padding:0">
-      <div class="idlemsg" id="idleMsg">Not in a game yet — queue up and this board comes alive.</div>
-      <div class="teams">
-        <div class="tcol">
-          <div class="ptitle blue" id="teamTitle1"><i class="ph-fill ph-shield"></i>Your team</div>
-          <div class="tlist" id="team1"></div>
+
+    <section class="purchasepanel" id="purchasePanel" hidden>
+      <div class="pphead"><i class="ph-fill ph-coins"></i>Next recall</div>
+      <div class="ppline"><span class="bpurchase" id="buildPurchase"></span></div>
+      <button class="disclosure" id="purchaseToggle" aria-expanded="false" aria-controls="purchaseDetails">reasons &amp; alternatives</button>
+      <div class="ppdetails" id="purchaseDetails" hidden></div>
+    </section>
+
+    <div class="objprep" id="objectivePrep" hidden></div>
+
+    <div class="buildstrip" id="buildStrip" style="display:none">
+      <span class="blabel"><i class="ph-fill ph-hammer"></i>BUILD</span>
+      <span class="planstat" id="planStat"></span>
+      <span class="hbadge st-mute" id="packBadge" style="display:none"></span>
+      <div class="bitems" id="buildItems"></div>
+      <span class="berr" id="buildErr"></span>
+    </div>
+
+    <div class="slab">
+      <div class="pane">
+        <div class="ptitle"><i class="ph-fill ph-brain"></i>Coach readout <span class="age" id="coachAge"></span></div>
+        <div id="deathWrap" style="display:none">
+          <div class="deathhead"><i class="ph-fill ph-skull"></i>Death report
+            <svg id="deathRing" width="15" height="15" viewBox="0 0 15 15" aria-hidden="true" style="margin-left:2px"><circle cx="7.5" cy="7.5" r="6" fill="none" stroke="rgba(224,93,111,.25)" stroke-width="2"/><circle id="deathArc" cx="7.5" cy="7.5" r="6" fill="none" stroke="#E05D6F" stroke-width="2" stroke-dasharray="37.7" stroke-dashoffset="0" stroke-linecap="round" transform="rotate(-90 7.5 7.5)"/></svg>
+            <button class="pinbtn" id="deathPin" aria-pressed="false" aria-label="keep this death report visible" title="pin this report so it does not disappear"><i class="ph-fill ph-push-pin"></i></button>
+            <span class="pinned" id="deathPinnedLabel" hidden>pinned</span>
+            <span class="age" id="deathAge"></span></div>
+          <div id="death"></div>
         </div>
-        <div class="tcol enemy">
-          <div class="ptitle red" id="teamTitle2"><i class="ph-fill ph-sword"></i>Enemy team</div>
-          <div class="tlist" id="team2"></div>
+        <div id="coach"><div class="coach-wait">Waiting for the first coach tick…</div></div>
+      </div>
+      <div class="vdiv"></div>
+      <div class="pane" style="padding:0">
+        <div class="idlemsg" id="idleMsg">Not in a game yet — queue up and this board comes alive.</div>
+        <div class="teams">
+          <div class="tcol">
+            <div class="ptitle blue" id="teamTitle1"><i class="ph-fill ph-shield"></i>Your team</div>
+            <div class="tlist" id="team1"></div>
+          </div>
+          <div class="tcol enemy">
+            <div class="ptitle red" id="teamTitle2"><i class="ph-fill ph-sword"></i>Enemy team</div>
+            <div class="tlist" id="team2"></div>
+          </div>
+        </div>
+      </div>
+      <div class="eventsline" id="events"></div>
+    </div>
+  </main>
+
+  <main id="reviewView" class="view" role="tabpanel" aria-labelledby="modeReview" hidden>
+    <div class="review" id="reviewPanel" style="display:none">
+      <div class="review-head">
+        <i class="ph-fill ph-flag-checkered"></i>POST-GAME REVIEW
+        <span class="rgame" id="reviewGame"></span>
+        <button class="review-close" id="reviewClose" aria-label="dismiss this review" title="dismiss this review"><i class="ph-fill ph-x"></i></button>
+      </div>
+      <div class="review-body">
+        <div>
+          <div class="review-sec">OBSERVED</div>
+          <ul class="review-obs" id="reviewObs"></ul>
+          <div class="review-na" id="reviewNa"></div>
+        </div>
+        <div>
+          <div class="review-sec">PRIORITIES</div>
+          <div class="review-prios" id="reviewPrios"></div>
         </div>
       </div>
     </div>
-    <div class="eventsline" id="events"></div>
-  </div>
 
-  <div class="tlstrip" id="tlStrip" style="display:none">
-    <span class="tllabel" id="tlToggle" title="toggle timeline"><i class="ph-fill ph-clock-counter-clockwise"></i>TIMELINE</span>
-    <span class="tlbudget" id="tlBudget"></span>
-    <div class="tllist" id="tlList"></div>
-  </div>
+    <div class="tlstrip" id="tlStrip" style="display:none">
+      <button class="tllabel" id="tlToggle" aria-expanded="false" aria-controls="tlList" title="toggle timeline"><i class="ph-fill ph-clock-counter-clockwise"></i>TIMELINE</button>
+      <span class="tlbudget" id="tlBudget"></span>
+      <div class="tllist" id="tlList"></div>
+    </div>
 
-  <div class="trendstrip" id="trendStrip" style="display:none">
-    <span class="trlabel" id="trToggle" title="toggle trends"><i class="ph-fill ph-chart-line-up"></i>TRENDS</span>
-    <span class="trsum" id="trSummary"></span>
-    <div class="trbody" id="trBody"></div>
-  </div>
+    <div class="trendstrip" id="trendStrip" style="display:none">
+      <button class="trlabel" id="trToggle" aria-expanded="false" aria-controls="trBody" title="toggle trends"><i class="ph-fill ph-chart-line-up"></i>TRENDS</button>
+      <span class="trsum" id="trSummary"></span>
+      <div class="trbody" id="trBody"></div>
+    </div>
+  </main>
+
+  <main id="setupView" class="view" role="tabpanel" aria-labelledby="modeSetup" hidden>
+    <div class="setupgrid">
+      <section class="setupcard" aria-labelledby="setupPlanTitle">
+        <h2 id="setupPlanTitle"><i class="ph-fill ph-hammer"></i>Build plan</h2>
+        <p>One <code>PLAN[Champion]: Item -&gt; Item</code> line per champion. Saving backs up to <code>build_intent.txt.bak</code> and writes atomically.</p>
+        <div class="planload" id="planLoadNote" role="status" aria-live="polite">plan not loaded yet</div>
+        <div class="btnrow"><button class="mbtn" id="planEditBtn" title="edit build plan">Edit build plan</button></div>
+        <div class="statusline" id="planGate"></div>
+      </section>
+
+      <section class="setupcard" aria-labelledby="setupHealthTitle">
+        <h2 id="setupHealthTitle"><i class="ph-fill ph-heartbeat"></i>Health &amp; sources</h2>
+        <div class="healthbig" id="setupHealth"></div>
+      </section>
+
+      <section class="setupcard" aria-labelledby="setupAudioTitle">
+        <h2 id="setupAudioTitle"><i class="ph-fill ph-speaker-high"></i>Audio &amp; voice</h2>
+        <div class="audioctl">
+          <label for="ttsVolume">Volume <input type="range" id="ttsVolume" min="0" max="100" step="5" value="90" aria-describedby="ttsVolumeVal"><span class="val" id="ttsVolumeVal">90%</span></label>
+          <label for="ttsRate">Rate <input type="range" id="ttsRate" min="50" max="200" step="5" value="105" aria-describedby="ttsRateVal"><span class="val" id="ttsRateVal">1.05x</span></label>
+          <label for="ttsVoice">Voice <select id="ttsVoice" aria-label="speech voice"><option value="">browser default</option></select></label>
+          <div class="btnrow">
+            <button class="mbtn" id="ttsStop" title="stop all speech">Stop all</button>
+            <button class="mbtn" id="ttsReplay" title="replay the last spoken line">Replay last</button>
+            <button class="mbtn" id="ttsTest" title="speak a test phrase">Test voice</button>
+          </div>
+          <p class="note">Spacing: routine advice waits at least 6s between lines; death/objective lines may take over after 1.5s. Queue entries expire and are cleared when the game session changes.</p>
+          <div class="statusline" id="voiceDetail" role="status" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="setupcard" aria-labelledby="setupPatchTitle">
+        <h2 id="setupPatchTitle"><i class="ph-fill ph-tag"></i>Patch, pack &amp; overlay</h2>
+        <div class="healthbig">
+          <div class="hrow"><b>patch</b><span id="setupPatch" class="statusline">—</span></div>
+          <div class="hrow"><b>pack</b><span id="setupPack" class="statusline">none</span></div>
+          <div class="hrow"><b>overlay</b><a class="ovlbtn" id="overlayBtnSetup" href="/overlay" target="_blank" rel="noopener">open overlay</a></div>
+        </div>
+        <p class="note">Overlay is read-only and consumes the same action stream. Nothing leaves your machine; inference cost is shown in status details.</p>
+      </section>
+    </div>
+  </main>
 </div>
 
 <div class="modal" id="planModal" aria-hidden="true">
-  <div class="modalbox" role="dialog" aria-modal="true" aria-labelledby="planModalTitle">
+  <div class="modalbox" role="dialog" aria-modal="true" aria-labelledby="planModalTitle" aria-describedby="planNote">
     <div class="modalhead"><i class="ph-fill ph-hammer"></i><span id="planModalTitle">Edit build plan</span><button class="x" id="planClose" title="close" aria-label="close">×</button></div>
-    <div class="modalnote">One <code>PLAN[Champion]: Item -&gt; Item</code> line per champion; notes are free text. Saving backs up the current file to <code>build_intent.txt.bak</code> and writes atomically. Max 64 KB.</div>
+    <div class="modalnote" id="planNote">One <code>PLAN[Champion]: Item -&gt; Item</code> line per champion; notes are free text. Saving backs up the current file to <code>build_intent.txt.bak</code> and writes atomically. Max 64 KB.</div>
     <div class="modalnote" id="planNames"></div>
-    <textarea id="planText" spellcheck="false" placeholder="PLAN[Nunu &amp; Willump]: Haunting Guise -> Liandry's Torment"></textarea>
-    <div class="modalerr" id="planErr"></div>
-    <div class="modalrow"><span class="modalstatus" id="planStatus"></span><button class="mbtn" id="planReload">Reload</button><button class="mbtn primary" id="planSave">Save</button></div>
+    <label class="sr-only" for="planText">Build plan text</label>
+    <textarea id="planText" spellcheck="false" aria-describedby="planNote planNames planLoadNote" placeholder="PLAN[Nunu &amp; Willump]: Haunting Guise -> Liandry's Torment"></textarea>
+    <div class="modalerr" id="planErr" role="status" aria-live="polite"></div>
+    <div class="modalrow"><span class="modalstatus" id="planStatus" role="status" aria-live="polite"></span><button class="mbtn" id="planReload">Reload</button><button class="mbtn primary" id="planSave">Save</button></div>
   </div>
 </div>
 
@@ -471,6 +660,20 @@ let healthAt = 0;
 let serverReachable = null;
 let gameStatus = 'connecting';
 let lastHealthDraw = 0;
+let currentMode = 'live';
+let activeAction = null;
+let actionSeq = 0;
+let fallbackActions = [];
+let serverAction = null;
+let actionAvailable = null;
+let actionHistory = [];
+let deathPinned = false;
+let pendingDeath = null;
+let planRevision = null;
+let planDirty = false;
+let planLoadError = '';
+let lastPlanOpener = null;
+let wasInGame = false;
 
 const OBJECTIVES = ['dragon soul', 'elder dragon', 'rift herald', 'voidgrubs', 'rift scuttler', 'scuttle crab', 'blue buff', 'red buff', 'inhibitor', 'dragon', 'baron', 'herald', 'grubs', 'scuttle', 'elder', 'soul', 'turret', 'turrets', 'plates', 'raptors', 'wolves', 'gromp', 'krugs'];
 
@@ -596,6 +799,7 @@ function chime(kind){
 
 const TTS_PRIORITY = { coach: 1, objective: 2, death: 3 };
 const TTS_MIN_INTERVAL_MS = 6000;
+const TTS_URGENT_INTERVAL_MS = 1500;
 const TTS_MAX_LEN = 240;
 const TTS_MAX_QUEUE = 3;
 const ttsSupported = typeof window !== 'undefined' && !!window.speechSynthesis && typeof window.SpeechSynthesisUtterance === 'function';
@@ -606,34 +810,94 @@ let ttsSeq = 0;
 let ttsGen = 0;
 let ttsLastStart = 0;
 let ttsTimer = null;
-let lastDeathTtsKey = null;
+let ttsBlocked = false;
+let lastSpokenItem = null;
 const ttsSeen = new Set();
+const ttsPrefs = { volume: 0.9, rate: 1.05, voice: '' };
+
+function loadTtsPrefs(){
+  try {
+    const raw = JSON.parse(localStorage.getItem('lolcoachTts') || 'null');
+    if (isObj(raw)) {
+      if (num(raw.volume) != null) ttsPrefs.volume = Math.max(0, Math.min(1, num(raw.volume)));
+      if (num(raw.rate) != null) ttsPrefs.rate = Math.max(0.5, Math.min(2, num(raw.rate)));
+      if (typeof raw.voice === 'string') ttsPrefs.voice = raw.voice;
+    }
+  } catch (e) {}
+}
+function saveTtsPrefs(){
+  try { localStorage.setItem('lolcoachTts', JSON.stringify(ttsPrefs)); } catch (e) {}
+  const volEl = document.getElementById('ttsVolume');
+  const rateEl = document.getElementById('ttsRate');
+  const volVal = document.getElementById('ttsVolumeVal');
+  const rateVal = document.getElementById('ttsRateVal');
+  if (volEl) volEl.value = String(Math.round(ttsPrefs.volume * 100));
+  if (rateEl) rateEl.value = String(Math.round(ttsPrefs.rate * 100));
+  if (volVal) volVal.textContent = Math.round(ttsPrefs.volume * 100) + '%';
+  if (rateVal) rateVal.textContent = ttsPrefs.rate.toFixed(2) + 'x';
+}
+loadTtsPrefs();
 
 function loadVoicePref(){
   try { return localStorage.getItem('lolcoachVoice') === '1'; } catch (e) { return false; }
 }
 voiceOn = ttsSupported && loadVoicePref();
 
+function setCaption(text, mode){
+  const el = document.getElementById('ttsCaption');
+  if (!el) return;
+  if (!text) { el.textContent = 'spoken captions appear here'; return; }
+  el.innerHTML = '<b>' + esc(mode === 'queued' ? 'queued' : (mode === 'blocked' ? 'voice blocked' : 'speaking')) + ':</b> ' + highlight(String(text).slice(0, 240));
+}
+
 function voiceSanitize(raw){
   return tidy(raw).replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, TTS_MAX_LEN);
+}
+
+function ttsVoices(){
+  try { return window.speechSynthesis.getVoices() || []; } catch (e) { return []; }
+}
+
+function findVoice(uri){
+  if (!uri) return null;
+  return ttsVoices().find(v => v.voiceURI === uri) || null;
+}
+
+function refreshVoiceList(){
+  const sel = document.getElementById('ttsVoice');
+  if (!sel) return;
+  const voices = ttsVoices();
+  const cur = ttsPrefs.voice;
+  sel.innerHTML = '<option value="">browser default</option>' + voices.map(v =>
+    '<option value="' + esc(v.voiceURI) + '">' + esc(v.name + (v.lang ? ' (' + v.lang + ')' : '')) + '</option>').join('');
+  if (cur && voices.some(v => v.voiceURI === cur)) sel.value = cur;
 }
 
 function refreshVoiceState(){
   const st = document.getElementById('voiceState');
   const btn = document.getElementById('voiceBtn');
   const icon = document.getElementById('voiceIcon');
-  const state = !ttsSupported ? 'nosup' : (voiceOn ? 'voice-on' : 'voice-off');
+  const detail = document.getElementById('voiceDetail');
+  const state = !ttsSupported ? 'nosup' : (ttsBlocked ? 'blocked' : (voiceOn ? 'voice-on' : 'voice-off'));
   if (btn) {
     btn.disabled = !ttsSupported;
+    btn.setAttribute('aria-pressed', voiceOn && ttsSupported ? 'true' : 'false');
     btn.classList.toggle('off', !ttsSupported || !voiceOn);
     btn.title = !ttsSupported ? 'voice unavailable — this browser has no speechSynthesis support'
-      : (voiceOn ? 'spoken coaching on — click to disable (death > objective > coach)'
-        : 'spoken coaching off — click to enable (death > objective > coach, min 6s apart)');
+      : (ttsBlocked ? 'voice blocked by the browser — click to retry'
+        : (voiceOn ? 'spoken coaching on — click to disable (death > objective > coach)'
+        : 'spoken coaching off — click to enable (death > objective > coach, min 6s apart)'));
   }
-  if (icon) icon.className = 'ph-fill ' + (!ttsSupported || !voiceOn ? 'ph-speaker-slash' : 'ph-speaker-high');
+  if (icon) icon.className = 'ph-fill ' + (!ttsSupported || !voiceOn || ttsBlocked ? 'ph-speaker-slash' : 'ph-speaker-high');
   if (st) {
-    st.textContent = !ttsSupported ? 'voice n/a' : (voiceOn ? 'voice on' : 'voice off');
+    st.textContent = !ttsSupported ? 'voice n/a' : (ttsBlocked ? 'voice blocked' : (voiceOn ? 'voice on' : 'voice off'));
     st.className = 'audiostate ' + state;
+  }
+  if (detail) {
+    detail.textContent = !ttsSupported ? 'unavailable: this browser has no speech synthesis.'
+      : (ttsBlocked ? 'blocked: the browser refused to speak. Click voice, then Test voice to retry.'
+        : (voiceOn ? 'ready: ' + ttsQueue.length + ' queued' + (ttsCurrent ? ', speaking now' : '') : 'voice is off.'));
+    detail.className = 'statusline ' + (!ttsSupported || ttsBlocked ? 'warn' : (voiceOn ? 'ok' : ''));
   }
 }
 
@@ -641,6 +905,15 @@ function ttsCancel(){
   ttsGen++;
   ttsCurrent = null;
   if (ttsSupported) { try { window.speechSynthesis.cancel(); } catch (e) {} }
+}
+
+function ttsClearQueue(reason){
+  ttsQueue = [];
+  ttsSeen.clear();
+  ttsCancel();
+  if (ttsTimer) { clearTimeout(ttsTimer); ttsTimer = null; }
+  if (reason) setCaption(reason === 'session changed' ? 'queue cleared for the new game session' : ('queue cleared — ' + reason));
+  refreshVoiceState();
 }
 
 function ttsSchedule(delayMs){
@@ -651,35 +924,60 @@ function ttsSchedule(delayMs){
 function ttsStart(item){
   const gen = ++ttsGen;
   ttsCurrent = item;
+  lastSpokenItem = item;
   ttsLastStart = performance.now();
+  setCaption(item.text, 'speaking');
   try {
     const u = new SpeechSynthesisUtterance(item.text);
-    u.rate = 1.05;
+    u.rate = ttsPrefs.rate;
     u.pitch = 1;
-    u.volume = 0.9;
-    const done = () => {
+    u.volume = ttsPrefs.volume;
+    const voice = findVoice(ttsPrefs.voice);
+    if (voice) u.voice = voice;
+    const done = (blocked) => {
       if (gen !== ttsGen) return;
       ttsCurrent = null;
+      if (blocked) { ttsBlocked = true; refreshVoiceState(); }
       ttsFlush();
     };
-    u.onend = done;
-    u.onerror = done;
+    u.onstart = () => {
+      if (gen !== ttsGen) return;
+      if (ttsBlocked) { ttsBlocked = false; }
+      setCaption(item.text, 'speaking');
+      refreshVoiceState();
+    };
+    u.onend = () => done(false);
+    u.onerror = ev => {
+      const err = ev && ev.error;
+      const hard = err === 'not-allowed' || err === 'audio-busy' || err === 'audio-hardware' || err === 'network';
+      done(hard);
+    };
     window.speechSynthesis.speak(u);
   } catch (e) {
-    if (gen === ttsGen) ttsCurrent = null;
+    if (gen === ttsGen) { ttsCurrent = null; ttsBlocked = true; refreshVoiceState(); }
   }
 }
 
+function pruneTtsQueue(){
+  const nowMs = Date.now();
+  ttsQueue = ttsQueue.filter(q => q.expiresMs > nowMs && !sessionMismatch(q.sessionId));
+}
+
 function ttsFlush(){
-  if (!ttsSupported || !voiceOn || ttsCurrent || !ttsQueue.length) return;
-  const wait = ttsLastStart + TTS_MIN_INTERVAL_MS - performance.now();
-  if (wait > 0) { ttsSchedule(wait); return; }
+  if (!ttsSupported || !voiceOn || ttsCurrent) return;
+  pruneTtsQueue();
+  if (!ttsQueue.length) return;
   ttsQueue.sort((a, b) => b.priority - a.priority || a.seq - b.seq);
+  const next = ttsQueue[0];
+  const minGap = next.priority >= 3 ? TTS_URGENT_INTERVAL_MS : TTS_MIN_INTERVAL_MS;
+  const wait = ttsLastStart + minGap - performance.now();
+  if (wait > 0) { ttsSchedule(wait); return; }
   ttsStart(ttsQueue.shift());
 }
 
-function ttsEnqueue(kind, raw, key){
+function ttsEnqueue(kind, raw, key, opts){
   if (!ttsSupported || !voiceOn) return false;
+  const o = opts || {};
   const text = voiceSanitize(raw);
   if (!text) return false;
   const priority = TTS_PRIORITY[kind] || 1;
@@ -687,11 +985,25 @@ function ttsEnqueue(kind, raw, key){
   if (ttsSeen.has(dedupe)) return false;
   ttsSeen.add(dedupe);
   if (ttsSeen.size > 60) ttsSeen.delete(ttsSeen.values().next().value);
-  const item = { kind: kind, text: text, priority: priority, seq: ++ttsSeq };
+  const observedMs = timeMs(o.observedAt) != null ? timeMs(o.observedAt) : Date.now();
+  const ttlMs = num(o.ttlMs) != null ? Math.max(1000, num(o.ttlMs)) : (ACTION_META[kind] ? ACTION_META[kind].ttlMs : 60000);
+  const item = {
+    kind: kind, text: text, priority: priority, seq: ++ttsSeq,
+    sessionId: o.sessionId == null ? null : String(o.sessionId),
+    expiresMs: observedMs + ttlMs
+  };
+  pruneTtsQueue();
   if (ttsCurrent && priority > ttsCurrent.priority) {
-    ttsCancel();
-    ttsQueue = ttsQueue.filter(q => q.priority >= priority);
-    ttsStart(item);
+    const minGap = priority >= 3 ? TTS_URGENT_INTERVAL_MS : TTS_MIN_INTERVAL_MS;
+    const sinceStart = performance.now() - ttsLastStart;
+    if (sinceStart >= minGap) {
+      ttsCancel();
+      ttsQueue = ttsQueue.filter(q => q.priority >= priority && !sessionMismatch(q.sessionId));
+      ttsStart(item);
+      return true;
+    }
+    if (ttsQueue.length < TTS_MAX_QUEUE) ttsQueue.push(item);
+    ttsSchedule(minGap - sinceStart);
     return true;
   }
   if (ttsQueue.length >= TTS_MAX_QUEUE) {
@@ -701,36 +1013,18 @@ function ttsEnqueue(kind, raw, key){
     else return false;
   }
   ttsQueue.push(item);
+  setCaption(item.text, 'queued');
+  refreshVoiceState();
   ttsFlush();
   return true;
-}
-
-function deathSpeechText(j){
-  const st = isObj(j.structured) ? j.structured : null;
-  if (st) {
-    const died = typeof st.died === 'string' && st.died.trim() ? st.died.trim() : '';
-    const clock = typeof st.gameClock === 'string' && st.gameClock.trim() ? st.gameClock.trim() : '';
-    const killer = typeof st.killer === 'string' && st.killer.trim() ? st.killer.trim() : '';
-    if (died) return 'Death report: ' + died;
-    if (clock) return 'Death at ' + clock + (killer ? ' to ' + killer : '');
-  }
-  const text = typeof j.text === 'string' ? j.text.trim() : '';
-  const pend = text.match(/^PENDING\|([^|]+)\|(.+)$/);
-  if (pend) return 'Death at ' + pend[1] + ' to ' + pend[2];
-  const m = text.match(/^DIED\s*:\s*(.*)$/im);
-  if (m) return 'Death report: ' + m[1];
-  return '';
-}
-
-function coachSpeechText(text){
-  const m = typeof text === 'string' ? text.match(/^DO NOW\s*:\s*(.*)$/im) : null;
-  return m && m[1].trim() ? 'Do now. ' + m[1].trim() : '';
 }
 
 function panelFail(key, msg){ panelErrors.set(key, String(msg || 'unavailable')); renderDiag(); }
 function panelOk(key){ if (panelErrors.delete(key)) renderDiag(); }
 function renderDiag(){
   const el = document.getElementById('diag');
+  const toggle = document.getElementById('detailsToggle');
+  if (toggle) toggle.classList.toggle('has-issue', panelErrors.size > 0);
   if (!el) return;
   if (!panelErrors.size) { el.textContent = ''; el.title = ''; el.classList.remove('show'); return; }
   el.textContent = 'issues: ' + [...panelErrors.keys()].join(', ');
@@ -887,6 +1181,33 @@ function renderHealthTooltip(){
     lines.push('server: /api/health unavailable (older server)');
   }
   el.title = lines.join('\n');
+  const big = document.getElementById('setupHealth');
+  if (big) {
+    const rows = [];
+    for (const key of ['game', 'coach', 'death', 'cost', 'plan']) {
+      const info = panelInfo.get(key);
+      const ok = info && (info.st === 'ok' || info.st === 'no_game' || info.st === 'missing');
+      const text = info ? (info.st + (info.detail ? ' \u2014 ' + info.detail : '') + ' \u00b7 ' + relAge((performance.now() - info.at) / 1000) + ' ago') : 'unknown';
+      rows.push('<div class="hrow"><b>' + esc(PANEL_LABELS[key]) + '</b><span class="statusline ' + (ok ? 'ok' : 'warn') + '">' + esc(text) + '</span></div>');
+    }
+    if (healthData) {
+      const db = isObj(healthData.db) ? healthData.db : null;
+      const lcu = isObj(healthData.lcu) ? healthData.lcu : null;
+      rows.push('<div class="hrow"><b>server</b><span class="statusline ' + (healthData.ok ? 'ok' : 'warn') + '">up ' + esc(relAge(healthData.uptimeSec)) + (healthData.ok ? '' : ' \u00b7 degraded') + '</span></div>');
+      rows.push('<div class="hrow"><b>database</b><span class="statusline ' + (db && db.ok ? 'ok' : 'warn') + '">' + esc(db ? (db.ok ? 'ok' : (db.status || 'error')) : 'unknown') + '</span></div>');
+      if (lcu) rows.push('<div class="hrow"><b>live client</b><span class="statusline ' + (lcu.status === 'live' ? 'ok' : 'warn') + '">' + esc(lcu.status || 'unknown') + (lcu.reachable === false ? ' (unreachable)' : '') + '</span></div>');
+      if (healthData.sessionId) rows.push('<div class="hrow"><b>session</b><span class="statusline">' + esc(String(healthData.sessionId)) + '</span></div>');
+    } else if (healthAvailable === false) {
+      rows.push('<div class="hrow"><b>server</b><span class="statusline warn">/api/health unavailable (older server)</span></div>');
+    }
+    big.innerHTML = rows.join('');
+  }
+  const sp = document.getElementById('setupPatch');
+  if (sp) {
+    const p = patchInfo();
+    sp.textContent = p.title || p.text;
+    sp.className = 'statusline ' + (p.mismatch ? 'warn' : (p.cls === 'st-info' ? 'ok' : ''));
+  }
 }
 
 function updateHealthUI(force){
@@ -972,10 +1293,220 @@ const fmt = s => {
   return `${Math.floor(x/60)}:${String(x%60).padStart(2,'0')}`;
 };
 
-function setStatus(kind, text){
+let announceTimer = null;
+function announce(msg){
+  const el = document.getElementById('liveAnnounce');
+  if (!el || !msg) return;
+  clearTimeout(announceTimer);
+  el.textContent = '';
+  announceTimer = setTimeout(() => { el.textContent = String(msg).slice(0, 320); }, 60);
+}
+
+const ACTION_META = {
+  coach: { label: 'Coach', priority: 1, ttlMs: 60000 },
+  objective: { label: 'Objective', priority: 2, ttlMs: 120000 },
+  death: { label: 'Death', priority: 3, ttlMs: 180000 }
+};
+
+function timeMs(v){
+  const n = num(v);
+  if (n != null) return n > 1e12 ? n : n * 1000;
+  if (typeof v === 'string' && v.trim()) { const t = Date.parse(v); if (isFinite(t)) return t; }
+  return null;
+}
+
+function sessionMismatch(sid){
+  if (sid == null || sid === '') return false;
+  if (currentSession == null || currentSession === '') return false;
+  return String(sid) !== String(currentSession);
+}
+
+function makeAction(kind, text, opts){
+  const o = opts || {};
+  const k = ACTION_META[kind] ? kind : 'coach';
+  const meta = ACTION_META[k];
+  const nowMs = Date.now();
+  const observedMs = timeMs(o.observedAt) != null ? timeMs(o.observedAt)
+    : (num(o.ageSec) != null ? nowMs - Math.max(0, num(o.ageSec)) * 1000 : nowMs);
+  const expiresMs = timeMs(o.expiresAt) != null ? timeMs(o.expiresAt)
+    : nowMs + (num(o.ttlMs) != null ? Math.max(1000, num(o.ttlMs)) : meta.ttlMs);
+  const clean = String(text == null ? '' : text).replace(/\s+/g, ' ').trim().slice(0, 400);
+  if (!clean) return null;
+  return {
+    kind: k,
+    priority: num(o.priority) != null ? num(o.priority) : meta.priority,
+    text: clean,
+    observedMs: observedMs,
+    expiresMs: expiresMs,
+    sessionId: o.sessionId == null ? null : String(o.sessionId),
+    source: typeof o.source === 'string' && o.source ? o.source.slice(0, 40) : (k + ' advice'),
+    seq: ++actionSeq
+  };
+}
+
+function actionSig(a){ return a ? a.kind + '|' + a.text : ''; }
+
+function pruneActions(){
+  const nowMs = Date.now();
+  fallbackActions = fallbackActions.filter(a => a.expiresMs > nowMs && !sessionMismatch(a.sessionId));
+  return nowMs;
+}
+
+function selectAction(){
+  const nowMs = pruneActions();
+  if (serverAction && serverAction.expiresMs > nowMs && !sessionMismatch(serverAction.sessionId)) return serverAction;
+  const live = fallbackActions.slice().sort((a, b) => (b.priority - a.priority) || (b.observedMs - a.observedMs) || (b.seq - a.seq));
+  return live[0] || null;
+}
+
+function recordAdvice(entry, displaced){
+  if (!entry) return;
+  const sig = actionSig(entry);
+  if (actionHistory.some(h => h.sig === sig)) return;
+  actionHistory.unshift({ sig: sig, kind: entry.kind, text: entry.text, at: Date.now(), displaced: !!displaced });
+  if (actionHistory.length > 30) actionHistory.length = 30;
+  renderActionHistory();
+}
+
+function renderActionHistory(){
+  const list = document.getElementById('actionHistory');
+  const count = document.getElementById('actionCount');
+  if (count) count.textContent = actionHistory.length ? '(' + actionHistory.length + ')' : '';
+  if (!list) return;
+  if (!actionHistory.length) { list.innerHTML = '<li>no advice recorded yet</li>'; return; }
+  list.innerHTML = actionHistory.map(h => {
+    const t = new Date(h.at);
+    const hh = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0') + ':' + String(t.getSeconds()).padStart(2, '0');
+    return '<li><span class="htime">' + hh + '</span><span class="hkind ' + esc(h.kind) + '">' + esc(h.kind) + '</span>' +
+      highlight(h.text.slice(0, 240)) + (h.displaced ? ' <span class="htime">(not shown)</span>' : '') + '</li>';
+  }).join('');
+}
+
+function updateActionMeta(){
+  const ageEl = document.getElementById('actionAge');
+  const expEl = document.getElementById('actionExpiry');
+  if (!activeAction) {
+    if (ageEl) ageEl.textContent = '';
+    if (expEl) expEl.textContent = '';
+    return;
+  }
+  const nowMs = Date.now();
+  const ageSec = Math.max(0, (nowMs - activeAction.observedMs) / 1000);
+  if (ageEl) {
+    ageEl.textContent = 'source ' + relAge(ageSec) + ' old';
+    ageEl.className = 'aage' + (ageSec > 90 ? ' warn' : '');
+  }
+  if (expEl) {
+    const left = Math.round((activeAction.expiresMs - nowMs) / 1000);
+    expEl.textContent = left > 0 ? 'expires in ' + relAge(left) : 'expired';
+    expEl.className = 'aage' + (left <= 0 ? ' err' : (left <= 15 ? ' warn' : ''));
+  }
+}
+
+function speakAction(a){
+  if (!a) return;
+  const prefix = a.kind === 'death' ? 'Death report. ' : (a.kind === 'objective' ? '' : 'Do now. ');
+  const ttlMs = Math.max(20000, a.expiresMs - Date.now());
+  ttsEnqueue(a.kind, prefix + a.text, a.kind + '|' + a.text, { sessionId: a.sessionId, observedAt: a.observedMs, ttlMs: ttlMs });
+}
+
+function renderActionSlot(){
+  const el = document.getElementById('actionSlot');
+  if (!el) return;
+  const sel = selectAction();
+  const sig = actionSig(sel);
+  if (sel && sig !== actionSig(activeAction)) {
+    activeAction = sel;
+    el.hidden = false;
+    el.dataset.kind = sel.kind;
+    const kindEl = document.getElementById('actionKind');
+    const srcEl = document.getElementById('actionSource');
+    const textEl = document.getElementById('actionText');
+    if (kindEl) kindEl.textContent = ACTION_META[sel.kind].label + ' action';
+    if (srcEl) srcEl.textContent = sel.source ? '\u00b7 ' + sel.source : '';
+    if (textEl) textEl.innerHTML = highlight(sel.text);
+    updateActionMeta();
+    recordAdvice(sel, false);
+    announce(ACTION_META[sel.kind].label + ' advice: ' + sel.text);
+    speakAction(sel);
+    return;
+  }
+  if (!sel) {
+    activeAction = null;
+    el.hidden = true;
+    updateActionMeta();
+    return;
+  }
+  activeAction = sel;
+  el.hidden = false;
+  updateActionMeta();
+}
+
+function registerAction(kind, text, opts){
+  if (!state.inGame && kind !== 'death') return null;
+  const a = makeAction(kind, text, opts);
+  if (!a) return null;
+  if (sessionMismatch(a.sessionId)) {
+    panelFail('advice', 'ignored wrong-session ' + a.kind + ' advice');
+    return null;
+  }
+  const sig = actionSig(a);
+  if (actionSig(activeAction) === sig) return a;
+  if (fallbackActions.some(f => actionSig(f) === sig)) return a;
+  fallbackActions.push(a);
+  if (fallbackActions.length > 12) fallbackActions.splice(0, fallbackActions.length - 12);
+  const selected = selectAction();
+  if (selected && actionSig(selected) !== sig) recordAdvice(a, true);
+  renderActionSlot();
+  return a;
+}
+
+function ingestServerAction(j){
+  const raw = isObj(j) && isObj(j.action) ? j.action : null;
+  if (!raw) { serverAction = null; return; }
+  const kind = ACTION_META[raw.kind] ? raw.kind : (num(raw.priority) === 3 ? 'death' : (num(raw.priority) === 2 ? 'objective' : 'coach'));
+  const a = makeAction(kind, raw.text, {
+    priority: raw.priority,
+    observedAt: raw.observedAt,
+    ageSec: raw.ageSec,
+    expiresAt: raw.expiresAt,
+    sessionId: raw.sessionId,
+    source: typeof raw.source === 'string' && raw.source ? raw.source : 'action stream'
+  });
+  serverAction = a;
+  if (!serverAction) return;
+  if (sessionMismatch(serverAction.sessionId)) {
+    panelFail('advice', 'action stream session differs from live game');
+    return;
+  }
+  panelOk('advice');
+  renderActionSlot();
+}
+
+function clearLiveSession(){
+  fallbackActions = [];
+  serverAction = null;
+  activeAction = null;
+  deathPinned = false;
+  pendingDeath = null;
+  ttsClearQueue('session changed');
+  const pin = document.getElementById('deathPin');
+  if (pin) pin.setAttribute('aria-pressed', 'false');
+  const pinLabel = document.getElementById('deathPinnedLabel');
+  if (pinLabel) pinLabel.hidden = true;
+  renderActionSlot();
+}
+
+let lastStatusAnnounced = '';
+function setStatus(kind, text, announceIt){
   const icon = document.getElementById('statIcon');
   if (icon) icon.className = 'ph-fill ph-broadcast st-' + kind;
-  document.getElementById('statusText').textContent = text;
+  const el = document.getElementById('statusText');
+  if (el) el.textContent = text;
+  if (announceIt !== false && kind !== lastStatusAnnounced && (kind === 'live' || kind === 'dead' || kind === 'wait')) {
+    lastStatusAnnounced = kind;
+    announce(text);
+  }
 }
 function setCost(total, sub){
   document.getElementById('costTotal').textContent = total;
@@ -1033,13 +1564,14 @@ function itemImgs(items, spells){
     if (!isObj(it)) continue;
     const id = safeId(it.id);
     if (id == null) continue;
-    h += `<img src="${cdnUrl('/img/item/' + id + '.png')}" title="${esc(it.n)}" alt="">`;
+    const name = typeof it.n === 'string' && it.n ? it.n : 'item';
+    h += `<img src="${cdnUrl('/img/item/' + id + '.png')}" title="${esc(name)}" alt="${esc(name)}">`;
   }
   if (Array.isArray(spells) && spells.length) {
     h += '<span class="spells">';
     for (const sp of spells) {
       const f = SPELL_ICONS[sp];
-      if (f) h += `<img src="${cdnUrl('/img/spell/' + f + '.png')}" title="${esc(sp)}" alt="">`;
+      if (f) h += `<img src="${cdnUrl('/img/spell/' + f + '.png')}" title="${esc(sp)}" alt="summoner spell ${esc(sp)}">`;
     }
     h += '</span>';
   }
@@ -1073,14 +1605,17 @@ function playerCard(p, opp){
     extra = `<div class="mextra">Q${numTxt(a.Q)} W${numTxt(a.W)} E${numTxt(a.E)} R${numTxt(a.R)}${p.keystone ? ' · ' + esc(p.keystone) : ''}</div>`;
   }
   const key = safeChampKey(p.key || p.champ);
+  const valueLabel = deltaTxt && isObj(opp) ? (', item value ' + (num(p.value) - num(opp.value) >= 0 ? 'ahead of ' : 'behind ') + String(opp.champ || 'opponent') + ' by ' + Math.abs(Math.round(num(p.value) - num(opp.value)))) : '';
+  const kdaLabel = 'Kills ' + numTxt(p.k, 'unknown') + ', deaths ' + numTxt(p.d, 'unknown') + ', assists ' + numTxt(p.a, 'unknown') +
+    ', ' + numTxt(p.cs, 'unknown') + ' creep score' + (goldN != null ? ', ' + Math.round(goldN) + ' gold available' : '') + valueLabel;
   return `<div class="prow${p.me ? ' me' : ''}"${tip}>${bar}
-    <img class="champ" src="${cdnUrl('/img/champion/' + key + '.png')}" data-fallback="${cdnUrl('/img/champion/Unknown.png')}" title="${esc(p.champ)}" alt="">
+    <img class="champ" src="${cdnUrl('/img/champion/' + key + '.png')}" data-fallback="${cdnUrl('/img/champion/Unknown.png')}" title="${esc(p.champ)}" alt="${esc(p.champ)}">
     <div>
-      <div class="pline"><span class="pname">${esc(p.champ)}</span><span class="lvl">${numTxt(p.level)}</span>${p.me ? '<span class="you">YOU</span>' : ''}<span class="pos">${esc(pos)}</span></div>
+      <div class="pline"><span class="pname">${esc(p.champ)}</span><span class="lvl">level ${numTxt(p.level)}</span>${p.me ? '<span class="you">YOU</span>' : ''}<span class="pos">${esc(pos)}</span></div>
       ${itemImgs(p.items, p.spells)}
       ${extra}
     </div>
-    <div class="kda"><span class="k">${numTxt(p.k, '–')}</span>/<span class="d">${numTxt(p.d, '–')}</span>/<span class="a">${numTxt(p.a, '–')}</span><span class="cs">${numTxt(p.cs, '–')} CS${gold}${deltaTxt}</span></div>
+    <div class="kda" role="group" aria-label="${esc(kdaLabel)}"><span class="kda-k" aria-hidden="true">K</span><span class="k">${numTxt(p.k, '–')}</span><span class="kda-k" aria-hidden="true">/D</span><span class="d">${numTxt(p.d, '–')}</span><span class="kda-k" aria-hidden="true">/A</span><span class="a">${numTxt(p.a, '–')}</span><span class="cs">${numTxt(p.cs, '–')} CS${gold}${deltaTxt}</span></div>
   </div>`;
 }
 function explicitSoul(s){
@@ -1156,6 +1691,20 @@ function renderTopbar(s, now, stale){
   const phaseEl = document.getElementById('objPhase');
   if (phaseEl) phaseEl.classList.toggle('stale', !!stale && t != null);
   document.getElementById('phaseVal').textContent = t == null ? '—' : (t < 14*60 ? 'EARLY' : (t < 25*60 ? 'MID' : 'LATE'));
+  const prep = document.getElementById('objectivePrep');
+  if (prep) {
+    if (!stale && t != null) {
+      const dLeft = dt.next - t;
+      const bLeft = bNext - t;
+      const soon = dLeft > 0 && dLeft <= 90 ? { name: 'dragon', left: dLeft }
+        : (bLeft > 0 && bLeft <= 120 ? { name: 'Baron', left: bLeft } : null);
+      if (soon) {
+        prep.hidden = false;
+        prep.innerHTML = '<i class="ph-fill ph-hourglass"></i> Prepare for <b>' + soon.name + '</b> in ' + fmt(soon.left) +
+          (soon.name === 'dragon' && dt.elderNext ? ' \u00b7 elder next' : '');
+      } else prep.hidden = true;
+    } else prep.hidden = true;
+  }
 }
 
 function renderEvents(ev){
@@ -1228,7 +1777,8 @@ function renderPlan(items){
     const id = safeId(it.id);
     if (id == null || seen.has(id)) continue;
     seen.add(id);
-    html += `<span class="bitem cur" title="${esc(it.n)}"><img src="${cdnUrl('/img/item/' + id + '.png')}" alt=""></span>`;
+    const curName = typeof it.n === 'string' && it.n ? it.n : 'owned item';
+    html += `<span class="bitem cur" title="${esc(curName)}" aria-label="owned: ${esc(curName)}"><img src="${cdnUrl('/img/item/' + id + '.png')}" alt="${esc(curName)}"></span>`;
   }
   const pending = lastPlanItems.filter(it => !isDone(it));
   const caret = '<i class="ph-fill ph-caret-right barrow"></i>';
@@ -1239,9 +1789,9 @@ function renderPlan(items){
       const next = i === 0;
       const id = safeId(it.id);
       const btitle = esc(it.name) + (next ? ' - next buy' : '');
-      html += `<span class="bitem ${next ? 'next' : 'todo'}" data-btitle="${btitle}" title="${btitle}">`;
-      if (id != null) html += `<img src="${cdnUrl('/img/item/' + id + '.png')}" alt="">`;
-      else html += `<span style="font-size:9.5px;color:var(--dim);white-space:nowrap">${esc(it.name)}</span>`;
+      html += `<span class="bitem ${next ? 'next' : 'todo'}" data-btitle="${btitle}" title="${btitle}" aria-label="${next ? 'next buy: ' : 'plan item: '}${esc(it.name)}">`;
+      if (id != null) html += `<img src="${cdnUrl('/img/item/' + id + '.png')}" alt="${esc(it.name)}">`;
+      else html += `<span style="font-size:10.5px;color:var(--dim);white-space:nowrap">${esc(it.name)}</span>`;
       html += '</span>';
     });
   } else {
@@ -1266,11 +1816,13 @@ function packLabel(pack){
 function renderPackBadge(){
   const el = document.getElementById('packBadge');
   const strip = document.getElementById('buildStrip');
+  const setupEl = document.getElementById('setupPack');
   if (!el) return;
   if (!state.inGame || !isObj(activePack)) {
     el.style.display = 'none';
     el.textContent = '';
     el.title = '';
+    if (setupEl) setupEl.textContent = state.inGame ? 'no pack for this champion/role' : 'none (no live game)';
     return;
   }
   const info = packLabel(activePack);
@@ -1278,6 +1830,7 @@ function renderPackBadge(){
   el.textContent = info.text;
   el.title = info.title;
   el.style.display = '';
+  if (setupEl) setupEl.textContent = info.text + ' \u2014 ' + info.title;
   if (strip && strip.style.display === 'none') strip.style.display = 'flex';
 }
 
@@ -1307,48 +1860,72 @@ async function ensurePack(champ, role){
   renderPackBadge();
 }
 
+function purchaseComps(next){
+  const cheapest = (Array.isArray(next.cheapestAffordable) ? next.cheapestAffordable : []).filter(isObj);
+  if (cheapest.length) return cheapest;
+  return (Array.isArray(next.components) ? next.components : []).filter(c => isObj(c) && c.affordable);
+}
+
+function purchaseLine(p, next){
+  const name = typeof next.name === 'string' && next.name ? next.name : 'target item';
+  const remaining = num(next.goldToComplete);
+  const exact = next.costExact !== false;
+  const affordable = next.affordableNow === true;
+  const goldShort = num(next.goldShort);
+  const comps = purchaseComps(next);
+  if (!exact || remaining == null) {
+    return { main: 'Next recall: ' + name + ' \u2014 cost unknown', target: 'target remaining: unknown' };
+  }
+  const short = goldShort != null ? ' (' + Math.round(goldShort) + 'g to go)' : '';
+  if (affordable) {
+    return { main: 'Next recall: ' + name + ' \u2014 ' + Math.round(remaining) + 'g, affordable now', target: 'target remaining: ' + Math.round(remaining) + 'g' };
+  }
+  if (comps.length) {
+    const c = comps[0];
+    return { main: 'Next recall: ' + (typeof c.name === 'string' && c.name ? c.name : 'component') + ' \u2014 ' + numTxt(c.goldToComplete) + 'g toward ' + name, target: 'target remaining: ' + Math.round(remaining) + 'g' + short };
+  }
+  return { main: 'Next recall: save for ' + name, target: 'target remaining: ' + Math.round(remaining) + 'g' + short };
+}
+
 function renderPurchase(){
   const el = document.getElementById('buildPurchase');
-  if (!el) return;
+  const panel = document.getElementById('purchasePanel');
+  const details = document.getElementById('purchaseDetails');
+  if (!el || !panel) return;
   const p = isObj(lastPurchase) ? lastPurchase : null;
   const next = (p && isObj(p.next)) ? p.next : null;
   const nextItem = document.querySelector('#buildItems .bitem.next');
   if (nextItem) nextItem.title = nextItem.getAttribute('data-btitle') || '';
   if (!state.inGame || !next) {
-    el.style.display = 'none';
+    panel.hidden = true;
     el.innerHTML = '';
     el.title = '';
-    el.classList.remove('canbuy');
+    if (details) details.innerHTML = '';
     return;
   }
-  const remaining = num(next.goldToComplete);
-  const exact = next.costExact !== false;
-  const goldNow = num(p.gold);
-  const affordable = next.affordableNow === true;
-  let costTxt;
-  if (!exact || remaining == null) costTxt = 'cost unknown';
-  else if (affordable) costTxt = Math.round(remaining) + 'g';
-  else costTxt = Math.max(0, Math.round(remaining - (goldNow != null ? goldNow : 0))) + 'g to go';
-  const comps = (Array.isArray(next.components) ? next.components : [])
-    .filter(c => isObj(c) && c.affordable);
+  const line = purchaseLine(p, next);
+  const reasons = (Array.isArray(p.reasons) ? p.reasons : []).filter(r => typeof r === 'string');
   const alts = (Array.isArray(p.alternatives) ? p.alternatives : []).filter(isObj);
-  el.classList.toggle('canbuy', affordable);
-  let html = '<span class="gnext">' + esc(costTxt) + '</span>';
-  html += '<span>' + esc(typeof next.name === 'string' ? next.name : '') + '</span>';
-  if (affordable) html += '<span class="bbuy">can afford now</span>';
-  el.innerHTML = html;
-  const tips = [];
-  for (const c of comps.slice(0, 6)) tips.push('can buy ' + c.name + ' (' + numTxt(c.goldToComplete) + 'g)');
-  for (const a of alts) tips.push('alternative: ' + a.name + ' (' + numTxt(a.goldToComplete) + 'g)');
-  for (const r of (Array.isArray(p.reasons) ? p.reasons : [])) if (typeof r === 'string') tips.push(r);
-  el.title = tips.join('\n');
-  el.style.display = 'flex';
+  const comps = purchaseComps(next);
+  el.innerHTML = '<span class="gnext">' + esc(line.main) + '</span><span>' + esc(line.target) + '</span>' +
+    (next.affordableNow === true ? '<span class="bbuy">can afford now</span>' : '');
+  el.title = [line.main, line.target].concat(reasons).join('\n');
+  panel.hidden = false;
+  if (details) {
+    const rows = [];
+    for (const r of reasons) rows.push(r);
+    for (const c of comps.slice(0, 6)) rows.push('buyable component: ' + (c.name || '?') + ' \u2014 ' + numTxt(c.goldToComplete) + 'g to complete');
+    for (const a of alts) rows.push('alternative: ' + (a.name || '?') + ' \u2014 ' + numTxt(a.goldToComplete) + 'g to complete');
+    const slots = isObj(p.slots) ? p.slots : null;
+    if (slots && num(slots.free) != null) rows.push('inventory slots: ' + numTxt(slots.free) + ' free of ' + numTxt(slots.total));
+    if (num(p.gold) != null) rows.push('current gold: ' + Math.round(num(p.gold)) + 'g');
+    details.innerHTML = rows.length ? rows.map(r => '<div class="pprow">' + esc(r) + '</div>').join('') : '<div class="pprow">no extra purchase details</div>';
+  }
   if (nextItem) {
-    const notes = [costTxt];
-    if (affordable) notes.push('can afford now');
-    if (comps.length) notes.push('can buy: ' + comps.map(c => c.name + ' (' + numTxt(c.goldToComplete) + 'g)').join(', '));
+    const notes = [line.main, line.target];
+    if (comps.length) notes.push('can buy: ' + comps.map(c => (c.name || '?') + ' (' + numTxt(c.goldToComplete) + 'g)').join(', '));
     const base = nextItem.getAttribute('data-btitle') || '';
-    nextItem.title = base + (base ? ' — ' : '') + notes.join(' · ');
+    nextItem.title = base + (base ? ' \u2014 ' : '') + notes.join(' \u00b7 ');
   }
 }
 
@@ -1380,9 +1957,16 @@ function pickTeams(s){
 }
 
 function renderIdle(kind, msg){
+  if (wasInGame) { wasInGame = false; clearLiveSession(); }
   state = { inGame: false, status: kind };
   lastGoodAt = 0;
   anchor = { t: 0, at: performance.now() };
+  fallbackActions = [];
+  serverAction = null;
+  activeAction = null;
+  renderActionSlot();
+  const prepEl = document.getElementById('objectivePrep');
+  if (prepEl) prepEl.hidden = true;
   document.getElementById('clock').textContent = '--:--';
   document.getElementById('clock').classList.remove('stale');
   document.getElementById('summoner').textContent = '—';
@@ -1469,10 +2053,14 @@ function handleGame(j){
   gameStatus = status;
   if (status === 'live' && j.inGame) {
     markPanel('game', 'ok', '');
+    wasInGame = true;
     if (j.sessionId != null && j.sessionId !== currentSession) {
+      const hadSession = currentSession != null;
       currentSession = j.sessionId;
       document.getElementById('deathWrap').style.display = 'none';
       deathAnchor = null;
+      lastDeathAnnouncedKey = null;
+      if (hadSession) clearLiveSession();
     }
     const t = num(j.time);
     if (t != null) anchor = { t: t, at: performance.now() };
@@ -1522,33 +2110,41 @@ async function pollGame(){
 function renderCoach(j){
   if (!isObj(j)) return;
   const el = document.getElementById('coach');
-  const age = num(j.age);
+  const age = num(j.sourceAgeSec) != null ? num(j.sourceAgeSec) : num(j.age);
+  const mismatch = j.mismatch === true || sessionMismatch(j.sessionId);
+  if (mismatch) {
+    document.getElementById('coachAge').textContent = 'wrong session';
+    markPanel('coach', 'mismatch', 'advice belongs to another game session');
+    el.innerHTML = '<div class="coach-wait">Coach advice belongs to a different game session — waiting for this game.</div>';
+    return;
+  }
   document.getElementById('coachAge').textContent = age != null ? `${Math.round(age)}s ago` : '';
   const text = typeof j.text === 'string' ? j.text.trim() : '';
   const changed = !!text && text !== 'OUT OF GAME' && text !== lastCoachText;
   if (changed) chime('tick');
   if (text) lastCoachText = text;
-  if (changed && (age == null || age <= 30)) {
-    const speech = coachSpeechText(text);
-    if (speech) ttsEnqueue('coach', speech, 'coach|' + speech);
-  }
   if (!text) { el.innerHTML = '<div class="coach-wait">Waiting for the first coach tick…</div>'; return; }
   if (text === 'OUT OF GAME') { el.innerHTML = '<div class="coach-wait">Coach idle — not in a game.</div>'; return; }
-  let html = '';
+  let html = '', threatHtml = '', threatCount = 0, hadAction = false;
   for (const raw of text.split(/\r?\n/)) {
     const l = tidy(raw).trim();
     if (!l || l === '===COACH===') continue;
     let m;
     const tag = COACH_TAGS.find(t => (m = l.match(new RegExp('^[-\\u2022]\\s*' + t[0] + '\\s*:\\s*(.*)$', 'i'))));
     if (tag) {
-      html += `<div class="crow ${tag[2]}"><span class="ctag"><i class="ph-fill ${tag[1]}"></i>${tag[0]}</span><span class="ctext">${highlight(m[1])}</span></div>`;
+      const row = `<div class="crow ${tag[2]}"><span class="ctag"><i class="ph-fill ${tag[1]}"></i>${tag[0]}</span><span class="ctext">${highlight(m[1])}</span></div>`;
+      if (tag[2] === 'threat' || tag[2] === 'avoid') { threatHtml += row; threatCount++; }
+      else html += row;
     } else if ((m = l.match(/^DO NOW\s*:\s*(.*)$/i))) {
-      html += `<div class="donow"><span class="ctag"><i class="ph-fill ph-lightning"></i>DO NOW</span><span class="ctext">${highlight(m[1])}</span></div>`;
+      if (registerAction('coach', m[1], { ageSec: age, sessionId: j.sessionId, source: 'coach file' })) hadAction = true;
     } else {
       html += `<div class="chead">${highlight(l)}</div>`;
     }
   }
-  el.innerHTML = html;
+  if (threatCount) {
+    html += `<details class="coachmore"><summary><i class="ph-fill ph-warning-octagon"></i>threats &amp; evidence (${threatCount})</summary><div class="cgrid">${threatHtml}</div></details>`;
+  }
+  el.innerHTML = html || '<div class="coach-wait">' + (hadAction ? 'Primary action shown above.' : 'Coach tick had no readable sections.') + '</div>';
 }
 
 const DEATH_INSUFFICIENT_RE = /^insufficient evidence\b/i;
@@ -1560,7 +2156,7 @@ function deathStringList(value, cap){
     .slice(0, cap || 8);
 }
 
-function structuredDeathHtml(st){
+function structuredDeathHtml(st, ageSec, sessionId){
   const facts = deathStringList(st.facts);
   const hyps = deathStringList(st.hypotheses);
   const factsReal = facts.filter(t => !DEATH_INSUFFICIENT_RE.test(t));
@@ -1569,6 +2165,12 @@ function structuredDeathHtml(st){
     : (typeof st.gameClock === 'string' && st.gameClock.trim()
       ? st.gameClock.trim() + (typeof st.killer === 'string' && st.killer.trim() ? ' to ' + st.killer.trim() : '')
       : '');
+  const now = typeof st.now === 'string' ? st.now.trim() : '';
+  const next = typeof st.next === 'string' ? st.next.trim() : '';
+  const doNow = typeof st.doNow === 'string' ? st.doNow.trim() : '';
+  const actOpts = { ageSec: ageSec, sessionId: sessionId == null ? st.sessionId : sessionId, source: 'death report' };
+  if (now && now !== doNow) registerAction('death', now, actOpts);
+  if (doNow) registerAction('death', doNow, actOpts);
   let html = '';
   if (died) html += `<div class="chead death"><i class="ph-fill ph-skull"></i> Died ${highlight(died)}</div>`;
   if (!factsReal.length && !hypsReal.length) {
@@ -1580,19 +2182,18 @@ function structuredDeathHtml(st){
       html += '</ul></div>';
     }
     if (hypsReal.length) {
-      html += '<div class="dsec hyp"><div class="dsec-tag"><i class="ph-fill ph-question"></i>HYPOTHESIS</div><ul class="dlist">';
+      html += '<div class="dsec hyp"><details><summary><i class="ph-fill ph-question"></i>HYPOTHESIS (' + hypsReal.length + ')</summary><ul class="dlist">';
       for (const t of hypsReal) html += `<li>${highlight(t)}</li>`;
-      html += '</ul></div>';
+      html += '</ul></details></div>';
     }
   }
-  const now = typeof st.now === 'string' ? st.now.trim() : '';
-  const next = typeof st.next === 'string' ? st.next.trim() : '';
-  const doNow = typeof st.doNow === 'string' ? st.doNow.trim() : '';
   if (now) html += `<div class="crow now"><span class="ctag"><i class="ph-fill ph-hourglass"></i>NOW</span><span class="ctext">${highlight(now)}</span></div>`;
   if (next) html += `<div class="crow next"><span class="ctag"><i class="ph-fill ph-arrow-right"></i>NEXT</span><span class="ctext">${highlight(next)}</span></div>`;
-  if (doNow) html += `<div class="donow"><span class="ctag"><i class="ph-fill ph-lightning"></i>DO NOW</span><span class="ctext">${highlight(doNow)}</span></div>`;
   return html;
 }
+
+const PENDING_TTL_SEC = 120;
+let lastDeathAnnouncedKey = null;
 
 function renderDeath(j){
   if (!isObj(j)) return;
@@ -1600,34 +2201,57 @@ function renderDeath(j){
   const el = document.getElementById('death');
   const ring = document.getElementById('deathRing');
   const text = typeof j.text === 'string' ? j.text.trim() : '';
-  const age = num(j.age);
+  const structured = isObj(j.structured) ? j.structured : null;
+  const age = num(j.sourceAgeSec) != null ? num(j.sourceAgeSec) : num(j.age);
+  const sessionId = j.sessionId != null ? j.sessionId : (structured ? structured.sessionId : null);
+  if (sessionMismatch(sessionId)) {
+    wrap.style.display = 'none';
+    deathAnchor = null;
+    markPanel('death', 'mismatch', 'death report belongs to another game session');
+    return;
+  }
   if (!text || age == null) { wrap.style.display = 'none'; deathAnchor = null; return; }
   const pend = text.match(/^PENDING\|([^|]+)\|(.+)$/);
   if (pend) {
+    if (age > PENDING_TTL_SEC && !deathPinned) {
+      wrap.style.display = 'none';
+      deathAnchor = null;
+      return;
+    }
     wrap.style.display = 'block';
     const isNew = !deathAnchor || deathAnchor.kind !== 'pending' || deathAnchor.clock !== pend[1] || deathAnchor.killer !== pend[2];
     if (isNew) {
       chime('death');
-      ttsEnqueue('death', 'Death at ' + pend[1] + ' to ' + pend[2], 'death-pending|' + pend[1] + '|' + pend[2]);
+      recordAdvice(makeAction('death', 'Death at ' + pend[1] + ' to ' + pend[2] + ' — analyzing'), false);
+      announce('Death at ' + pend[1] + ' to ' + pend[2] + '. Analyzing.');
     }
-    deathAnchor = { kind: 'pending', clock: pend[1], killer: pend[2], age: age, at: performance.now() };
+    pendingDeath = { kind: 'pending', clock: pend[1], killer: pend[2], age: age, at: performance.now() };
+    deathAnchor = pendingDeath;
     ring.style.display = 'none';
-    document.getElementById('deathAge').textContent = 'analyzing';
-    el.innerHTML = `<div class="chead death"><i class="ph-fill ph-skull"></i> Died ${highlight(pend[1])} to ${highlight(pend[2])} - generating report</div><div class="dloading"><i class="ph-fill ph-spinner-gap"></i>analyzing the death and your best options...</div>`;
+    document.getElementById('deathAge').textContent = 'analyzing \u00b7 ' + relAge(age);
+    el.innerHTML = `<div class="chead death"><i class="ph-fill ph-skull"></i> Died ${highlight(pend[1])} to ${highlight(pend[2])} - generating report</div><div class="dloading"><i class="ph-fill ph-spinner-gap"></i>analyzing the death and your best options\u2026</div>`;
     return;
   }
-  if (age > 60) { wrap.style.display = 'none'; deathAnchor = null; return; }
+  pendingDeath = null;
+  if (age > 60 && !deathPinned) { wrap.style.display = 'none'; deathAnchor = null; return; }
   wrap.style.display = 'block';
   ring.style.display = '';
   deathAnchor = { kind: 'final', age: age, at: performance.now() };
   updateDeathRing();
-  const dkey = text.slice(0, 300) + '|' + (isObj(j.structured) ? String(j.structured.died || j.structured.gameClock || '') : '');
-  if (dkey !== lastDeathTtsKey && age <= 20) {
-    lastDeathTtsKey = dkey;
-    ttsEnqueue('death', deathSpeechText(j), 'death|' + dkey);
+  if (structured) {
+    const head = structured.died || structured.gameClock || text.slice(0, 120);
+    const dkey = 'structured|' + String(structured.seq != null ? structured.seq : '') + '|' + head;
+    const fresh = age <= 20;
+    if (dkey !== lastDeathAnnouncedKey && fresh) {
+      lastDeathAnnouncedKey = dkey;
+      recordAdvice(makeAction('death', 'Death report: ' + head), false);
+      announce('Death report: ' + head);
+    }
+    el.innerHTML = structuredDeathHtml(structured, age, sessionId);
+    return;
   }
-  if (isObj(j.structured)) { el.innerHTML = structuredDeathHtml(j.structured); return; }
   let html = '';
+  const acts = [];
   for (const raw of text.split(/\r?\n/)) {
     const l = tidy(raw).trim();
     if (!l || l === '===DEATH===') continue;
@@ -1635,25 +2259,42 @@ function renderDeath(j){
     if ((m = l.match(/^DIED\s*:\s*(.*)$/i))) {
       html += `<div class="chead death"><i class="ph-fill ph-skull"></i> Died ${highlight(m[1])}</div>`;
     } else if ((m = l.match(/^DO NOW\s*:\s*(.*)$/i))) {
-      html += `<div class="donow"><span class="ctag"><i class="ph-fill ph-lightning"></i>DO NOW</span><span class="ctext">${highlight(m[1])}</span></div>`;
+      acts.push(['doNow', m[1]]);
     } else {
       const tag = DEATH_TAGS.find(t => (m = l.match(new RegExp('^' + t[0] + '\\s*:\\s*(.*)$', 'i'))));
-      if (tag) html += `<div class="crow ${tag[2]}"><span class="ctag"><i class="ph-fill ${tag[1]}"></i>${tag[0]}</span><span class="ctext">${highlight(m[1])}</span></div>`;
+      if (tag && (tag[2] === 'now' || tag[2] === 'next')) acts.push([tag[2], m[1]]);
+      else if (tag) html += `<div class="crow ${tag[2]}"><span class="ctag"><i class="ph-fill ${tag[1]}"></i>${tag[0]}</span><span class="ctext">${highlight(m[1])}</span></div>`;
       else html += `<div class="chead death">${highlight(l)}</div>`;
     }
+  }
+  const actOpts = { ageSec: age, sessionId: sessionId, source: 'death report' };
+  const doNow = acts.find(a => a[0] === 'doNow') || acts.find(a => a[0] === 'now');
+  if (doNow) registerAction('death', doNow[1], actOpts);
+  const nextRow = acts.find(a => a[0] === 'next');
+  if (nextRow) html += `<div class="crow next"><span class="ctag"><i class="ph-fill ph-arrow-right"></i>NEXT</span><span class="ctext">${highlight(nextRow[1])}</span></div>`;
+  const dkey = 'text|' + text.slice(0, 300);
+  if (dkey !== lastDeathAnnouncedKey && age <= 20) {
+    lastDeathAnnouncedKey = dkey;
+    recordAdvice(makeAction('death', 'Death report: ' + (text.match(/^DIED\s*:\s*(.*)$/im) || [null, 'see report'])[1]), false);
+    announce('Death report updated.');
   }
   el.innerHTML = html;
 }
 
 function updateDeathRing(){
   const wrap = document.getElementById('deathWrap');
-  if (!deathAnchor || deathAnchor.kind !== 'final' || wrap.style.display === 'none') return;
+  if (!deathAnchor || wrap.style.display === 'none') return;
   if (state.inGame && lastGoodAt > 0 && performance.now() - lastGoodAt > FRESH_WINDOW_MS) return;
   const age = deathAnchor.age + (performance.now() - deathAnchor.at) / 1000;
+  if (deathAnchor.kind === 'pending') {
+    document.getElementById('deathAge').textContent = 'analyzing \u00b7 ' + relAge(age);
+    if (age > PENDING_TTL_SEC && !deathPinned) { wrap.style.display = 'none'; deathAnchor = null; }
+    return;
+  }
   const arc = document.getElementById('deathArc');
   if (arc) arc.setAttribute('stroke-dashoffset', String(37.7 * Math.min(1, age / 60)));
-  document.getElementById('deathAge').textContent = age < 8 ? 'just now' : `${Math.round(age)}s ago`;
-  if (age > 60) { wrap.style.display = 'none'; deathAnchor = null; }
+  document.getElementById('deathAge').textContent = (age < 8 ? 'just now' : `${Math.round(age)}s ago`) + (deathPinned ? ' \u00b7 pinned' : '');
+  if (age > 60 && !deathPinned) { wrap.style.display = 'none'; deathAnchor = null; }
 }
 
 async function pollCoach(){
@@ -1662,12 +2303,13 @@ async function pollCoach(){
     const j = r.json;
     if (!isObj(j)) { markPanel('coach', 'malformed', 'non-object response'); setPanelAge('coachAge', 'unavailable', 'err'); return; }
     const st = typeof j.status === 'string' ? j.status : 'ok';
-    const age = num(j.age);
+    const age = num(j.sourceAgeSec) != null ? num(j.sourceAgeSec) : num(j.age);
     if (st === 'ok' || st === 'missing') setSourceAge('coach', st === 'ok' ? age : null);
     renderCoach(j);
     if (st === 'error') { markPanel('coach', 'error', 'file read error'); setPanelAge('coachAge', 'read error', 'err'); }
     else if (st === 'unstable') { markPanel('coach', 'unstable', 'unstable file read'); setPanelAge('coachAge', 'unstable read', 'warn'); }
     else if (st === 'missing') { markPanel('coach', 'missing', 'no output yet'); setPanelAge('coachAge', 'no output yet', ''); }
+    else if (j.mismatch === true) { markPanel('coach', 'mismatch', 'advice session differs from live game'); setPanelAge('coachAge', 'wrong session', 'err'); }
     else { markPanel('coach', 'ok', ''); setPanelAge('coachAge', age != null ? relAge(age) + ' old' : 'source ok', age != null && age > 90 ? 'warn' : 'ok'); }
   } catch (e) { serverReachable = false; markPanel('coach', 'offline', 'UI server unreachable'); setPanelAge('coachAge', 'server offline', 'err'); }
 }
@@ -1678,13 +2320,34 @@ async function pollDeath(){
     const j = r.json;
     if (!isObj(j)) { markPanel('death', 'malformed', 'non-object response'); setPanelAge('deathAge', 'unavailable', 'err'); return; }
     const st = typeof j.status === 'string' ? j.status : 'ok';
-    const age = num(j.age);
+    const age = num(j.sourceAgeSec) != null ? num(j.sourceAgeSec) : num(j.age);
     renderDeath(j);
+    const mismatch = j.mismatch === true || sessionMismatch(j.sessionId) || (isObj(j.structured) && sessionMismatch(j.structured.sessionId));
     if (st === 'error') { markPanel('death', 'error', 'file read error'); setPanelAge('deathAge', 'read error', 'err'); }
     else if (st === 'unstable') { markPanel('death', 'unstable', 'unstable file read'); setPanelAge('deathAge', 'unstable read', 'warn'); }
     else if (st === 'missing') { markPanel('death', 'missing', 'no output yet'); setPanelAge('deathAge', 'no output yet', ''); }
+    else if (mismatch) { markPanel('death', 'mismatch', 'report session differs from live game'); setPanelAge('deathAge', 'wrong session', 'err'); }
     else { markPanel('death', 'ok', ''); if (age != null && age > 90) setPanelAge('deathAge', relAge(age) + ' old', 'warn'); }
   } catch (e) { serverReachable = false; markPanel('death', 'offline', 'UI server unreachable'); setPanelAge('deathAge', 'server offline', 'err'); }
+}
+
+async function pollAction(){
+  try {
+    const r = await fetchJson('/api/action', 8000);
+    if (r.status === 404) {
+      if (actionAvailable !== false) { actionAvailable = false; panelOk('action'); }
+      ingestServerAction(null);
+      renderActionSlot();
+      return;
+    }
+    if (r.badJson || !isObj(r.json)) { panelFail('action', 'malformed response'); ingestServerAction(null); renderActionSlot(); return; }
+    actionAvailable = true;
+    ingestServerAction(r.json);
+    renderActionSlot();
+  } catch (e) {
+    panelFail('action', 'UI server unreachable');
+    renderActionSlot();
+  }
 }
 
 async function pollPlan(){
@@ -1759,6 +2422,8 @@ function renderTimeline(){
     : '<span class="tlentry">no timeline entries yet</span>';
   strip.style.display = 'flex';
   strip.classList.toggle('open', tlOpen);
+  const tgl = document.getElementById('tlToggle');
+  if (tgl) tgl.setAttribute('aria-expanded', tlOpen ? 'true' : 'false');
 }
 
 async function pollTimeline(){
@@ -1785,9 +2450,11 @@ async function pollTimeline(){
         const id = num(e && e.id);
         if (id == null || id <= tlEventSeen) continue;
         tlEventSeen = Math.max(tlEventSeen, id);
-        if (String(e.kind) === 'objective') {
+        if (String(e.kind) === 'objective' && state.inGame) {
           const label = typeof e.label === 'string' && e.label.trim() ? e.label.trim() : 'Objective event';
-          ttsEnqueue('objective', label, 'objective|' + id);
+          const at = num(e.at_ts);
+          const ageSec = at != null ? Math.max(0, Date.now() / 1000 - at) : null;
+          registerAction('objective', label, { ageSec: ageSec, source: 'timeline reminder', ttlMs: 90000 });
         }
       }
     }
@@ -1945,6 +2612,8 @@ function renderTrends(){
   body.innerHTML = renderTrendsBody(j);
   strip.style.display = 'flex';
   strip.classList.toggle('open', trendsOpen);
+  const tgl = document.getElementById('trToggle');
+  if (tgl) tgl.setAttribute('aria-expanded', trendsOpen ? 'true' : 'false');
 }
 
 async function pollTrends(){
@@ -1990,48 +2659,86 @@ function setPlanNames(text){
   el.textContent = names.length ? 'plans in file: ' + names.join(', ') : 'no PLAN[...] lines yet';
 }
 
-async function loadPlanRaw(){
+function setPlanGate(text, cls){
+  const note = document.getElementById('planLoadNote');
+  if (note) {
+    note.textContent = text || 'plan status unknown';
+    note.className = 'planload' + (cls === 'err' ? ' err' : cls === 'warn' ? ' warn' : '');
+  }
+  const btn = document.getElementById('planEditBtn');
+  if (btn) btn.title = text || 'edit build plan';
+}
+
+async function loadPlanRaw(silent){
   try {
     const r = await fetchJson('/api/plan/raw', 8000);
     if (r.status === 404) {
       planEditorAvailable = false;
       const btn = document.getElementById('planEditBtn');
       if (btn) btn.style.display = 'none';
+      setPlanGate('plan editor unavailable on this server (no /api/plan/raw)', 'warn');
       return false;
     }
     const j = r.json;
     if (!isObj(j) || typeof j.text !== 'string') {
-      setPlanEditorState('could not read the plan file', '');
+      planLoadError = 'could not read the plan file';
+      if (!silent) setPlanEditorState(planLoadError, '');
+      setPlanGate('plan load failed before opening the editor: ' + planLoadError, 'err');
       return false;
     }
     planEditorAvailable = true;
+    planLoadError = '';
+    planRevision = j.revision != null ? j.revision : null;
     const ta = document.getElementById('planText');
-    if (ta) ta.value = j.text;
+    if (ta && !(planDirty && document.activeElement === ta)) ta.value = j.text;
     setPlanNames(j.text);
+    setPlanGate('plan loaded \u00b7 revision ' + (planRevision != null ? String(planRevision) : 'n/a'), '');
     return true;
   } catch (e) {
-    setPlanEditorState('UI server offline — could not load the plan', '');
+    planLoadError = 'UI server offline \u2014 could not load the plan';
+    if (!silent) setPlanEditorState(planLoadError, '');
+    setPlanGate('plan load failed before opening the editor: ' + planLoadError, 'err');
     return false;
   }
 }
 
+const FOCUSABLE = 'button:not([disabled]), [href], textarea:not([disabled]), select:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 async function openPlanEditor(){
   const modal = document.getElementById('planModal');
   if (!modal) return;
+  lastPlanOpener = document.activeElement && document.activeElement.focus ? document.activeElement : document.getElementById('planEditBtn');
   setPlanEditorState('', '');
-  const loaded = await loadPlanRaw();
-  if (!loaded) return;
+  const shell = document.querySelector('.shell');
+  if (shell) { shell.inert = true; shell.setAttribute('aria-hidden', 'true'); }
   modal.classList.add('show');
   modal.setAttribute('aria-hidden', 'false');
+  const loaded = await loadPlanRaw(true);
+  if (!loaded) setPlanEditorState(planLoadError || 'plan could not be loaded', '');
   const ta = document.getElementById('planText');
   if (ta) ta.focus();
 }
 
 function closePlanEditor(){
   const modal = document.getElementById('planModal');
-  if (!modal) return;
+  if (!modal || !modal.classList.contains('show')) return;
   modal.classList.remove('show');
   modal.setAttribute('aria-hidden', 'true');
+  const shell = document.querySelector('.shell');
+  if (shell) { shell.inert = false; shell.removeAttribute('aria-hidden'); }
+  const opener = lastPlanOpener && document.contains(lastPlanOpener) ? lastPlanOpener : document.getElementById('planEditBtn');
+  lastPlanOpener = null;
+  if (opener && typeof opener.focus === 'function') opener.focus();
+}
+
+function trapPlanFocus(ev){
+  const modal = document.getElementById('planModal');
+  if (!modal || !modal.classList.contains('show') || ev.key !== 'Tab') return;
+  const nodes = [...modal.querySelectorAll(FOCUSABLE)].filter(el => el.offsetParent !== null || el === document.activeElement);
+  if (!nodes.length) return;
+  const first = nodes[0], last = nodes[nodes.length - 1];
+  if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+  else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
 }
 
 async function savePlanEditor(){
@@ -2040,8 +2747,18 @@ async function savePlanEditor(){
   if (!ta || !save) return;
   save.disabled = true;
   setPlanEditorState('', 'saving…');
+  const body = { text: ta.value };
+  if (planRevision != null) body.revision = planRevision;
   try {
-    const r = await postJson('/api/plan/edit', { text: ta.value }, 10000);
+    const r = await postJson('/api/plan/edit', body, 10000);
+    if (r.status === 409) {
+      const j409 = r.json;
+      const msg = isObj(j409) && (j409.message || j409.error) ? (j409.message || j409.error) : 'the plan changed in another tab or request';
+      planDirty = true;
+      setPlanEditorState('Stale plan revision: ' + msg + ' \u2014 click Reload to fetch the current file, then re-apply your edit. Your text was not saved.', '');
+      announce('Plan save rejected: stale revision.');
+      return;
+    }
     const j = r.json;
     if (!isObj(j)) { setPlanEditorState('unexpected response from the server', ''); return; }
     if (!j.ok) {
@@ -2049,10 +2766,13 @@ async function savePlanEditor(){
       setPlanEditorState(details.length ? details.join('\n') : (j.message || j.error || 'save rejected'), '');
       return;
     }
-    await loadPlanRaw();
+    planDirty = false;
+    if (j.revision != null) planRevision = j.revision;
+    await loadPlanRaw(true);
     const lines = num(j.lines);
     const backup = typeof j.backup === 'string' && j.backup ? ' · backup ' + j.backup : '';
     setPlanEditorState('', 'saved' + (lines != null ? ' ' + Math.round(lines) + ' lines' : '') + backup);
+    announce('Plan saved.');
     pollPlan();
   } catch (e) {
     setPlanEditorState('UI server offline — save failed', '');
@@ -2150,6 +2870,91 @@ function tickClock(){
   updateHealthUI();
 }
 
+function syncPressed(btn, pressed){
+  if (btn) btn.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+}
+
+function setMode(mode){
+  const valid = ['live', 'review', 'setup'];
+  currentMode = valid.includes(mode) ? mode : 'live';
+  const tabs = { live: document.getElementById('modeLive'), review: document.getElementById('modeReview'), setup: document.getElementById('modeSetup') };
+  const views = { live: document.getElementById('liveView'), review: document.getElementById('reviewView'), setup: document.getElementById('setupView') };
+  for (const k of valid) {
+    const tab = tabs[k], view = views[k];
+    if (tab) {
+      const selected = k === currentMode;
+      tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+      tab.tabIndex = selected ? 0 : -1;
+    }
+    if (view) view.hidden = k !== currentMode;
+  }
+  if (currentMode === 'review') {
+    tlOpen = true;
+    trendsOpen = true;
+    renderTimeline();
+    renderTrends();
+    renderReview();
+  } else if (currentMode === 'setup') {
+    updateHealthUI(true);
+  } else {
+    renderActionSlot();
+  }
+}
+
+const modeTabsEl = document.querySelector('.modetabs');
+if (modeTabsEl) {
+  modeTabsEl.addEventListener('click', ev => {
+    const btn = ev.target.closest('.mode-tab');
+    if (btn) setMode(btn.id.replace('mode', '').toLowerCase());
+  });
+  modeTabsEl.addEventListener('keydown', ev => {
+    const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+    if (!keys.includes(ev.key)) return;
+    const tabs = [...modeTabsEl.querySelectorAll('.mode-tab')];
+    const idx = tabs.indexOf(document.activeElement);
+    if (idx < 0) return;
+    ev.preventDefault();
+    const next = ev.key === 'Home' ? 0 : ev.key === 'End' ? tabs.length - 1
+      : (idx + (ev.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+    tabs[next].focus();
+    tabs[next].click();
+  });
+}
+
+const detailsBtn = document.getElementById('detailsToggle');
+if (detailsBtn) detailsBtn.addEventListener('click', () => {
+  const panel = document.getElementById('detailsPanel');
+  const open = detailsBtn.getAttribute('aria-expanded') === 'true';
+  detailsBtn.setAttribute('aria-expanded', open ? 'false' : 'true');
+  if (panel) panel.hidden = open;
+});
+
+const drawerBtn = document.getElementById('actionDrawerToggle');
+if (drawerBtn) drawerBtn.addEventListener('click', () => {
+  const body = document.getElementById('actionDrawerBody');
+  const open = drawerBtn.getAttribute('aria-expanded') === 'true';
+  drawerBtn.setAttribute('aria-expanded', open ? 'false' : 'true');
+  if (body) body.hidden = open;
+});
+
+const purchaseBtn = document.getElementById('purchaseToggle');
+if (purchaseBtn) purchaseBtn.addEventListener('click', () => {
+  const body = document.getElementById('purchaseDetails');
+  const open = purchaseBtn.getAttribute('aria-expanded') === 'true';
+  purchaseBtn.setAttribute('aria-expanded', open ? 'false' : 'true');
+  if (body) body.hidden = open;
+});
+
+const pinBtn = document.getElementById('deathPin');
+if (pinBtn) pinBtn.addEventListener('click', () => {
+  deathPinned = !deathPinned;
+  pinBtn.setAttribute('aria-pressed', deathPinned ? 'true' : 'false');
+  const label = document.getElementById('deathPinnedLabel');
+  if (label) label.hidden = !deathPinned;
+  if (deathPinned && deathAnchor) document.getElementById('deathWrap').style.display = 'block';
+  updateDeathRing();
+});
+
 document.getElementById('muteBtn').addEventListener('click', async () => {
   soundOn = !soundOn;
   try { localStorage.setItem('lolcoachMute', soundOn ? '0' : '1'); } catch (e) {}
@@ -2158,6 +2963,7 @@ document.getElementById('muteBtn').addEventListener('click', async () => {
     if (ctx && ctx.state === 'suspended') { try { await ctx.resume(); } catch (e) {} }
     chime('tick');
   }
+  syncPressed(document.getElementById('muteBtn'), soundOn);
   refreshAudioState();
 });
 const voiceBtnEl = document.getElementById('voiceBtn');
@@ -2166,14 +2972,66 @@ if (voiceBtnEl) voiceBtnEl.addEventListener('click', () => {
   voiceOn = !voiceOn;
   try { localStorage.setItem('lolcoachVoice', voiceOn ? '1' : '0'); } catch (e) {}
   if (!voiceOn) {
-    ttsQueue = [];
-    ttsCancel();
+    ttsClearQueue('voice off');
+    setCaption('voice turned off');
   } else {
+    ttsBlocked = false;
     try { window.speechSynthesis.resume(); } catch (e) {}
-    ttsEnqueue('coach', 'Voice coaching on', 'voice-announce');
+    ttsEnqueue('coach', 'Voice coaching on', 'voice-announce', { ttlMs: 10000 });
   }
+  syncPressed(voiceBtnEl, voiceOn);
   refreshVoiceState();
+  announce(voiceOn ? 'Spoken coaching on.' : 'Spoken coaching off.');
 });
+
+const volEl = document.getElementById('ttsVolume');
+if (volEl) volEl.addEventListener('input', () => {
+  ttsPrefs.volume = Math.max(0, Math.min(1, Number(volEl.value) / 100));
+  saveTtsPrefs();
+});
+const rateEl = document.getElementById('ttsRate');
+if (rateEl) rateEl.addEventListener('input', () => {
+  ttsPrefs.rate = Math.max(0.5, Math.min(2, Number(rateEl.value) / 100));
+  saveTtsPrefs();
+});
+const voiceSel = document.getElementById('ttsVoice');
+if (voiceSel) voiceSel.addEventListener('change', () => {
+  ttsPrefs.voice = voiceSel.value;
+  saveTtsPrefs();
+});
+const stopBtn = document.getElementById('ttsStop');
+if (stopBtn) stopBtn.addEventListener('click', () => {
+  ttsClearQueue('stop all');
+  setCaption('speech stopped by user');
+  refreshVoiceState();
+  announce('All speech stopped.');
+});
+const replayBtn = document.getElementById('ttsReplay');
+if (replayBtn) replayBtn.addEventListener('click', () => {
+  if (!lastSpokenItem) { setCaption('nothing spoken yet'); announce('Nothing to replay yet.'); return; }
+  if (!ttsSupported) { announce('Voice unavailable in this browser.'); return; }
+  const item = { kind: lastSpokenItem.kind, text: lastSpokenItem.text, priority: lastSpokenItem.priority, seq: ++ttsSeq, sessionId: null, expiresMs: Date.now() + 60000 };
+  ttsCancel();
+  ttsQueue = [];
+  ttsStart(item);
+});
+const testBtn = document.getElementById('ttsTest');
+if (testBtn) testBtn.addEventListener('click', () => {
+  if (!ttsSupported) { setCaption('voice unavailable in this browser'); announce('Voice unavailable in this browser.'); return; }
+  voiceOn = true;
+  try { localStorage.setItem('lolcoachVoice', '1'); } catch (e) {}
+  ttsBlocked = false;
+  syncPressed(document.getElementById('voiceBtn'), true);
+  refreshVoiceState();
+  ttsCancel();
+  ttsQueue = [];
+  ttsStart({ kind: 'coach', text: 'RiftSense voice test. Death, objective, then coach priority.', priority: 1, seq: ++ttsSeq, sessionId: null, expiresMs: Date.now() + 60000 });
+});
+if (ttsSupported) {
+  refreshVoiceList();
+  try { window.speechSynthesis.addEventListener('voiceschanged', refreshVoiceList); } catch (e) {}
+}
+
 document.addEventListener('click', () => {
   ensureAudio();
   if (ttsSupported && voiceOn) { try { window.speechSynthesis.resume(); } catch (e) {} }
@@ -2190,12 +3048,17 @@ function scheduleLoop(fn, ms){
   step();
 }
 
+setMode('live');
+renderActionHistory();
+saveTtsPrefs();
+syncPressed(document.getElementById('muteBtn'), soundOn);
+syncPressed(document.getElementById('voiceBtn'), voiceOn);
 refreshAudioState();
 refreshVoiceState();
 pollVersion();
-pollHealth();
 scheduleLoop(pollGame, 2000);
 scheduleLoop(pollHealth, 5000);
+scheduleLoop(pollAction, 2000);
 scheduleLoop(pollCoach, 4000);
 scheduleLoop(pollDeath, 4000);
 scheduleLoop(pollCost, 5000);
@@ -2205,7 +3068,11 @@ scheduleLoop(pollTimeline, 5000);
 scheduleLoop(pollReview, 15000);
 scheduleLoop(pollHighlight, 60000);
 const tlToggleEl = document.getElementById('tlToggle');
-if (tlToggleEl) tlToggleEl.addEventListener('click', () => { tlOpen = !tlOpen; renderTimeline(); });
+if (tlToggleEl) tlToggleEl.addEventListener('click', () => {
+  tlOpen = !tlOpen;
+  tlToggleEl.setAttribute('aria-expanded', tlOpen ? 'true' : 'false');
+  renderTimeline();
+});
 const reviewCloseEl = document.getElementById('reviewClose');
 if (reviewCloseEl) reviewCloseEl.addEventListener('click', () => {
   if (lastReview && isObj(lastReview.game)) reviewDismissedGame = lastReview.game.id;
@@ -2213,19 +3080,32 @@ if (reviewCloseEl) reviewCloseEl.addEventListener('click', () => {
 });
 scheduleLoop(pollTrends, 15000);
 const trToggleEl = document.getElementById('trToggle');
-if (trToggleEl) trToggleEl.addEventListener('click', () => { trendsOpen = !trendsOpen; renderTrends(); });
+if (trToggleEl) trToggleEl.addEventListener('click', () => {
+  trendsOpen = !trendsOpen;
+  trToggleEl.setAttribute('aria-expanded', trendsOpen ? 'true' : 'false');
+  renderTrends();
+});
 const planEditBtn = document.getElementById('planEditBtn');
 if (planEditBtn) planEditBtn.addEventListener('click', openPlanEditor);
 const planCloseEl = document.getElementById('planClose');
 if (planCloseEl) planCloseEl.addEventListener('click', closePlanEditor);
 const planReloadEl = document.getElementById('planReload');
-if (planReloadEl) planReloadEl.addEventListener('click', () => { setPlanEditorState('', ''); loadPlanRaw(); });
+if (planReloadEl) planReloadEl.addEventListener('click', () => { planDirty = false; setPlanEditorState('', ''); loadPlanRaw(); });
 const planSaveEl = document.getElementById('planSave');
 if (planSaveEl) planSaveEl.addEventListener('click', savePlanEditor);
+const planTextEl = document.getElementById('planText');
+if (planTextEl) planTextEl.addEventListener('input', () => { planDirty = true; });
 const planModalEl = document.getElementById('planModal');
-if (planModalEl) planModalEl.addEventListener('click', ev => { if (ev.target === planModalEl) closePlanEditor(); });
+if (planModalEl) {
+  planModalEl.addEventListener('click', ev => { if (ev.target === planModalEl) closePlanEditor(); });
+  planModalEl.addEventListener('keydown', trapPlanFocus);
+}
 document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closePlanEditor(); });
-loadPlanRaw();
+loadPlanRaw(true);
+setInterval(() => {
+  if (activeAction && activeAction.expiresMs <= Date.now()) renderActionSlot();
+  else updateActionMeta();
+}, 1000);
 setInterval(updateDeathRing, 1000);
 setInterval(tickClock, 250);
 </script>
