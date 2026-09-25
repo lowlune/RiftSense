@@ -58,6 +58,10 @@ Champion and item data are downloaded automatically from Data Dragon on first ru
 
 The numbers in both files are patch-scoped (currently patch 26.19, retrieved 2026-09-23). Nothing re-validates them at runtime; re-check them after every Riot patch before relying on them.
 
+### Using champion packs
+
+`knowledge/packs/*.json` are the curated, patch-scoped subsets that the live path actually injects into the inference prompt as a `=== CHAMPION PACK (versioned) ===` block (`AutoCoach.ps1` -> `ui/packs.py`, capped at 1800 characters). The dashboard shows the active pack name and patch in the build strip, and the server exposes `GET /api/packs` and `GET /api/pack?champ=&role=`. The long dossier above remains the reference source; promote lines into a pack when they are verified for the current patch. See `knowledge/packs/README.md` for the schema and contribution rules.
+
 ## Compliance
 
 RiftSense uses only Riot's official local interfaces: the Live Client Data API (`127.0.0.1:2999`) and the League client's local API. No game process memory is read and no gameplay is automated. Personal fan project - not endorsed by Riot Games. See Riot's Third-Party Applications policy.

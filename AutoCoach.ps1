@@ -915,12 +915,36 @@ function Start-CoachRun {
     if ($script:coachSessionId -and ($script:coachSessionId -eq $script:sessionId)) {
         $prev = (Read-FileText $script:coachFile).Trim()
     }
-    $full = $Prompt + "`r`n`r`n=== GAME DATA (live) ===`r`n" + $data + "`r`n=== BUILD INTENT (current champion only) ===`r`n" + $intent + "`r`n=== PREVIOUS READOUT ===`r`n" + $prev
+    $packBlock = Get-ChampionPackBlock -Champ $Champ
+    $full = $Prompt + "`r`n`r`n=== GAME DATA (live) ===`r`n" + $data + "`r`n=== BUILD INTENT (current champion only) ===`r`n" + $intent + $packBlock + "`r`n=== PREVIOUS READOUT ===`r`n" + $prev
     $safe = $full.Replace([char]34, [char]39)
     $quoted = ([char]34) + $safe + ([char]34)
     $argLine = 'run --dir "' + $script:dir + '" --agent lol-coach --variant low --title "LoL AutoCoach" ' + $quoted
     if (Test-Path -LiteralPath $OutFile) { Remove-Item -LiteralPath $OutFile -Force -ErrorAction SilentlyContinue }
     return Start-Process -FilePath $ocExe -ArgumentList $argLine -RedirectStandardOutput $OutFile -RedirectStandardError $ErrFile -NoNewWindow -PassThru
+}
+
+function Get-ChampionPackBlock {
+    param([string]$Champ, [int]$MaxChars = 1800)
+    if (-not $Champ) { return '' }
+    $packScript = Join-Path $script:dir 'ui\packs.py'
+    if (-not (Test-Path -LiteralPath $packScript)) { return '' }
+    $py = $null
+    foreach ($cand in @('python', 'py')) {
+        $cmd = Get-Command $cand -ErrorAction SilentlyContinue
+        if ($cmd) { $py = $cmd.Source; break }
+    }
+    if (-not $py) { return '' }
+    $packText = ''
+    try {
+        $out = & $py $packScript --prompt --champ "$Champ" --max-chars $MaxChars 2>$null
+        if ($LASTEXITCODE -ne 0) { return '' }
+        $packText = (($out | Out-String).Trim())
+    } catch {
+        return ''
+    }
+    if (-not $packText) { return '' }
+    return ("`r`n" + $packText)
 }
 
 try {
