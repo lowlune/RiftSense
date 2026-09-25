@@ -10,7 +10,9 @@ param(
     [int]$NoGameEndSeconds = 300,
     [int]$MaxCommandLineChars = 28000,
     [int]$MaxGameStartAttempts = 50,
-    [string]$TimelineUrl = 'http://127.0.0.1:7777/api/events'
+    [string]$TimelineUrl = 'http://127.0.0.1:7777/api/events',
+    [int]$UpdateCheckHours = 6,
+    [switch]$NoUpdateCheck
 )
 
 if ($PollSeconds -lt 1) { $PollSeconds = 5 }
@@ -24,6 +26,7 @@ if ($MaxSourceAgeSeconds -lt 10) { $MaxSourceAgeSeconds = 90 }
 if ($NoGameEndSeconds -lt 30) { $NoGameEndSeconds = 300 }
 if ($MaxCommandLineChars -lt 2000) { $MaxCommandLineChars = 28000 }
 if ($MaxGameStartAttempts -lt 1) { $MaxGameStartAttempts = 50 }
+if ($UpdateCheckHours -lt 1) { $UpdateCheckHours = 6 }
 
 $ErrorActionPreference = 'Continue'
 $script:dir = $PSScriptRoot
@@ -115,6 +118,7 @@ $script:lastItemSignature = ''
 $script:lastObjectiveKey = ''
 $script:forceTick = $false
 $script:budgetExhausted = $false
+$script:nextUpdateCheckSec = 0.0
 
 function Get-ElapsedSeconds {
     return $script:clock.Elapsed.TotalSeconds
@@ -133,6 +137,51 @@ function Stop-ProcessTree {
     } catch { }
     try {
         if (-not $Process.HasExited) { Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue }
+    } catch { }
+}
+
+function Get-UpdateCheckStatePath {
+    $base = $env:TEMP
+    if (-not $base) { $base = $script:dir }
+    if (-not $base) { $base = [System.IO.Path]::GetTempPath() }
+    return (Join-Path $base 'riftsense_update_check_state.json')
+}
+
+function Test-RiftSenseUpdate {
+    # Best-effort, non-blocking update check. Never applies anything, never runs
+    # during a live game, ignores every error, and throttles itself via a small
+    # state file. Errors must never affect the coaching loop.
+    param([switch]$Force)
+    if ($NoUpdateCheck) { return }
+    if ($script:sessionActive) { return }
+    $nowUtc = (Get-Date).ToUniversalTime()
+    $statePath = Get-UpdateCheckStatePath
+    if (-not $Force) {
+        $lastUtc = $null
+        try {
+            if (Test-Path -LiteralPath $statePath) {
+                $raw = Get-Content -LiteralPath $statePath -Raw -Encoding UTF8
+                if ($raw) {
+                    $parsed = $raw | ConvertFrom-Json
+                    if ($parsed -and $parsed.lastCheckUtc) {
+                        $lastUtc = [datetime]::Parse("$($parsed.lastCheckUtc)").ToUniversalTime()
+                    }
+                }
+            }
+        } catch { $lastUtc = $null }
+        if ($lastUtc -and ((($nowUtc) - $lastUtc).TotalHours -lt $UpdateCheckHours)) { return }
+    }
+    try {
+        $state = [ordered]@{ lastCheckUtc = $nowUtc.ToString('o'); source = 'autocoach'; hours = $UpdateCheckHours }
+        Set-Content -LiteralPath $statePath -Value ($state | ConvertTo-Json -Compress) -Encoding Ascii -ErrorAction SilentlyContinue
+    } catch { }
+    $stamp = Get-Date -Format 'HH:mm:ss'
+    try {
+        $body = @{ force = $false } | ConvertTo-Json -Compress
+        $res = Invoke-RestMethod -Uri 'http://127.0.0.1:7777/api/update/check' -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 3 -ErrorAction Stop
+        if ($res -and $res.ok -and ("$($res.status)" -eq 'update_available')) {
+            Write-Host "[$stamp] Update available: $($res.current) -> $($res.latest). Open the dashboard Setup tab to install." -ForegroundColor Yellow
+        }
     } catch { }
 }
 
@@ -1220,6 +1269,10 @@ try {
     Write-Host "$TickSeconds s" -NoNewline -ForegroundColor Yellow
     Write-Host ', instant death reports. Ctrl+C or close this window to stop.' -ForegroundColor Green
 
+    # The first idle pass below performs the startup update check: the app only
+    # knows it is not in a game after the first live-client poll, and an update
+    # check must never run while a game is live.
+
     while ($true) {
         $script:ts = Get-Date -Format 'HH:mm:ss'
 
@@ -1250,6 +1303,12 @@ try {
                 Write-Host "[$script:ts] Waiting for a game..." -ForegroundColor DarkGray
             }
             Update-Workers
+            if (-not $script:sessionActive) {
+                if (-not $NoUpdateCheck -and ((Get-ElapsedSeconds) -ge $script:nextUpdateCheckSec)) {
+                    $script:nextUpdateCheckSec = (Get-ElapsedSeconds) + ([double]$UpdateCheckHours * 3600.0)
+                    try { Test-RiftSenseUpdate } catch { }
+                }
+            }
             Start-Sleep -Seconds $IdleSeconds
             continue
         }
