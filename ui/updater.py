@@ -745,6 +745,8 @@ def _apply(staged_path):
         '-InstallDir', ROOT,
         '-Version', version,
         '-LogDir', LOG_DIR,
+        '-WaitPid', str(os.getpid()),
+        '-Restart',
     ]
     creationflags = (getattr(subprocess, 'DETACHED_PROCESS', 0x00000008)
                      | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0x00000200))
