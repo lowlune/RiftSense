@@ -16,10 +16,10 @@ import re
 import sqlite3
 import time
 
-try:
-    import timeline
-except ImportError:  # package-style import (python3 -m ui.trends)
+if __package__:
     from . import timeline
+else:
+    import timeline
 
 DEATH_BUCKETS = ((0.0, 5.0, '0-5'), (5.0, 10.0, '5-10'), (10.0, 15.0, '10-15'),
                  (15.0, 20.0, '15-20'), (20.0, None, '20+'))
@@ -232,32 +232,34 @@ def _inference(con):
         ' WHERE g.ended_at IS NOT NULL GROUP BY i.status').fetchall()
     result = {'requests': 0, 'ok': 0, 'failed': 0, 'started': 0,
               'tokensIn': None, 'tokensOut': None, 'cost': None,
+              'partial': {'tokensIn': False, 'tokensOut': False, 'cost': False},
               'unavailable': []}
     tokens_in_total = 0
     tokens_out_total = 0
     cost_total = 0.0
-    tokens_in_known = True
-    tokens_out_known = True
-    cost_known = True
+    known_rows = {'tokensIn': 0, 'tokensOut': 0, 'cost': 0}
     for row in rows:
         n = _int(row['n'])
         status = str(row['status'] or '')
         result['requests'] += n
         if _int(row['tokens_in_unknown']):
-            tokens_in_known = False
+            result['partial']['tokensIn'] = True
         else:
             tokens_in_total += _int(row['tokens_in'])
+            known_rows['tokensIn'] += n
         if _int(row['tokens_out_unknown']):
-            tokens_out_known = False
+            result['partial']['tokensOut'] = True
         else:
             tokens_out_total += _int(row['tokens_out'])
+            known_rows['tokensOut'] += n
         if _int(row['cost_unknown']):
-            cost_known = False
+            result['partial']['cost'] = True
         else:
             try:
                 cost_total += float(row['cost'] or 0.0)
+                known_rows['cost'] += n
             except (TypeError, ValueError):
-                cost_known = False
+                result['partial']['cost'] = True
         if status == 'ok':
             result['ok'] += n
         elif status in ('failed', 'timeout'):
@@ -265,15 +267,15 @@ def _inference(con):
         else:
             result['started'] += n
     if result['requests']:
-        if tokens_in_known:
+        if known_rows['tokensIn']:
             result['tokensIn'] = tokens_in_total
         else:
             result['unavailable'].append('tokensIn')
-        if tokens_out_known:
+        if known_rows['tokensOut']:
             result['tokensOut'] = tokens_out_total
         else:
             result['unavailable'].append('tokensOut')
-        if cost_known:
+        if known_rows['cost']:
             result['cost'] = round(cost_total, 6)
         else:
             result['unavailable'].append('cost')

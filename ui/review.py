@@ -20,7 +20,7 @@ import sqlite3
 try:
     from . import timeline
 except ImportError:  # direct-script import (python3 ui/review.py)
-    import timeline
+    import timeline  # noqa: F401
 
 EARLY_DEATH_SECONDS = 600
 VERY_EARLY_DEATH_SECONDS = 480
@@ -203,7 +203,13 @@ def _coverage_api_raw(game_id, module=None):
         if not callable(api):
             continue
         try:
-            return api(game_id)
+            return api(game_id=game_id)
+        except TypeError:
+            pass
+        except Exception:
+            return None
+        try:
+            raw = api(game_id)
         except TypeError:
             try:
                 raw = api()

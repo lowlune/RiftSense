@@ -1190,15 +1190,19 @@ function Get-ChampionPackBlock {
     }
     if (-not $py) { return '' }
     $packText = ''
-    $packArgs = @($packScript, '--prompt', '--champ', "$Champ", '--max-chars', $MaxChars)
-    if ($Role) { $packArgs += @('--role', "$Role") }
+    $packArgs = @($packScript, '--prompt', '--champ', "$Champ", '--max-chars', $MaxChars, '--json')
+    if ($Role) { $packArgs += @('--role', "$Role", '--require-role') }
     try {
         $out = & $py @packArgs 2>$null
         if ($LASTEXITCODE -ne 0) { return '' }
-        $packText = (($out | Out-String).Trim())
+        $raw = (($out | Out-String).Trim())
     } catch {
         return ''
     }
+    if (-not $raw) { return '' }
+    $parsed = $null
+    try { $parsed = $raw | ConvertFrom-Json } catch { $parsed = $null }
+    if ($parsed -and $parsed.ok -and $parsed.text) { $packText = "$($parsed.text)" }
     if (-not $packText) { return '' }
     return ("`r`n" + $packText)
 }

@@ -46,6 +46,8 @@ ROLE_ALIASES = {
     'sup': 'support',
     'supp': 'support',
     'support': 'support',
+    'utility': 'support',
+    'utilities': 'support',
 }
 
 REQUIRED_FIELDS = {

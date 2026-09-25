@@ -1525,12 +1525,28 @@ async function fetchJson(url, timeoutMs){
   } finally { clearTimeout(to); }
 }
 
+let writeToken = null;
+async function ensureWriteToken(){
+  if (writeToken) return writeToken;
+  try {
+    const r = await fetch('/api/token', { cache: 'no-store' });
+    if (r.ok) {
+      const j = await r.json();
+      if (j && typeof j.token === 'string' && j.token) writeToken = j.token;
+    }
+  } catch (e) {}
+  return writeToken;
+}
+
 async function postJson(url, body, timeoutMs){
+  await ensureWriteToken();
   const ac = new AbortController();
   const to = setTimeout(() => { try { ac.abort(); } catch (e) {} }, timeoutMs || 8000);
+  const headers = { 'Content-Type': 'application/json' };
+  if (writeToken) headers['X-RiftSense-Token'] = writeToken;
   try {
     const r = await fetch(url, { method: 'POST', cache: 'no-store', signal: ac.signal,
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      headers: headers, body: JSON.stringify(body) });
     serverReachable = true;
     let json = null, badJson = false;
     try { json = await r.json(); } catch (e) { badJson = true; }

@@ -25,26 +25,14 @@ try:
     import msvcrt
 except ImportError:
     msvcrt = None
-try:
-    import purchase
-except ImportError:  # package-style import (python3 -m ui.server)
-    from . import purchase
-try:
-    import timeline
-except ImportError:  # package-style import (python3 -m ui.server)
-    from . import timeline
-try:
-    import review
-except ImportError:  # package-style import (python3 -m ui.server)
-    from . import review
-try:
+if __package__:  # package context: keep one module identity (ui.*)
+    from . import packs, purchase, review, timeline, trends
+else:  # direct script (python3 ui/server.py)
     import packs
-except ImportError:  # package-style import (python3 -m ui.server)
-    from . import packs
-try:
+    import purchase
+    import review
+    import timeline
     import trends
-except ImportError:  # package-style import (python3 -m ui.server)
-    from . import trends
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(BASE)
@@ -1232,6 +1220,12 @@ def build_purchase():
         'alternatives': result.get('alternatives') or [],
         'slots': result.get('slots') or payload['slots'],
         'reasons': result.get('reasons') or [],
+        'summary': result.get('summary'),
+        'frontier': result.get('frontier') or [],
+        'goldRaw': result.get('goldRaw'),
+        'goldRounded': result.get('goldRounded'),
+        'planProgress': result.get('planProgress'),
+        'inventory': result.get('inventory'),
     })
     return payload
 
@@ -1915,6 +1909,13 @@ def check_write_request(headers, token=None, port=None):
 
 def _init_write_token(path=None):
     path = TOKEN_FILE if path is None else path
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            existing = f.read().strip()
+        if existing and len(existing) >= 16:
+            return existing
+    except OSError:
+        pass
     token = secrets.token_urlsafe(32)
     try:
         _atomic_write_bytes(path, token.encode('utf-8'))

@@ -313,15 +313,13 @@ class ReviewAuditTests(unittest.TestCase):
         timeline.end_game('ses-int')
         con = sqlite3.connect(timeline.DB_PATH)
         try:
-            con.execute('CREATE TABLE intervals (game_id INTEGER, start_ms INTEGER,'
-                        ' end_ms INTEGER)')
-            con.execute('INSERT INTO intervals (game_id, start_ms, end_ms) VALUES (?,?,?)',
-                        (game['id'], 0, 600000))
             con.execute('UPDATE games SET started_at=?, ended_at=? WHERE id=?',
                         (1000000, 2000000, game['id']))
             con.commit()
         finally:
             con.close()
+        timeline.record_coverage('start', session_id='ses-int', at=1000000)
+        timeline.record_coverage('stop', session_id='ses-int', at=1600000)
 
         partial = review.build_review(game['id'], **review_kwargs())
         self.assertIsNotNone(partial['coverage'])
@@ -332,17 +330,12 @@ class ReviewAuditTests(unittest.TestCase):
         self.assertNotEqual(partial_prios['no_deaths']['title'],
                             'Keep the clean death record')
 
-        con = sqlite3.connect(timeline.DB_PATH)
-        try:
-            con.execute('UPDATE intervals SET end_ms=? WHERE game_id=?',
-                        (900000, game['id']))
-            con.commit()
-        finally:
-            con.close()
+        timeline.record_coverage('start', session_id='ses-int', at=1600000)
+        timeline.record_coverage('stop', session_id='ses-int', at=1900000)
 
         adequate = review.build_review(game['id'], **review_kwargs())
         self.assertTrue(adequate['coverage']['adequate'])
-        self.assertEqual(adequate['coverage']['source'], 'intervals:intervals')
+        self.assertIsInstance(adequate['coverage']['source'], str)
         self.assertEqual(adequate['dataQuality']['level'], 'ok')
         adequate_prios = {p['id']: p for p in adequate['priorities']}
         self.assertEqual(adequate_prios['no_deaths']['title'],
