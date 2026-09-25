@@ -1,0 +1,249 @@
+# RiftSense release workflow.
+#
+# Triggered by tags: `v1.0.0` (stable) or `v1.1.0-beta.1` (prerelease).
+#
+# Produces and publishes, for each tag:
+#   RiftSense-win-x64.zip           stable asset name used by
+#                                   /releases/latest/download/ and install.ps1
+#   RiftSense-win-x64-v<ver>.zip    versioned name used by the Scoop manifest
+#   SHA256SUMS.txt                  one SHA-256 line per asset
+#   install.ps1                     per-user bootstrap installer (release asset)
+#
+# BEFORE THE FIRST RELEASE: in the repository settings, enable
+#   Settings -> Releases -> "Immutable releases"
+# so published tags and assets are locked and release attestations are
+# generated. This must be done on the web UI; see docs/RELEASING.md.
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+env:
+  ZIP_STABLE: RiftSense-win-x64.zip
+
+jobs:
+  test:
+    name: python tests (clean export)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Export tracked files only (no gitignored runtime state)
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/rift
+          mkdir -p /tmp/rift
+          git archive HEAD | tar -x -C /tmp/rift
+          test -f /tmp/rift/ui/server.py
+          test ! -e /tmp/rift/champion.json
+          test ! -e /tmp/rift/items.json
+          echo "Clean export ready: $(find /tmp/rift -type f | wc -l) tracked files"
+
+      - name: Run unit tests from the clean export
+        working-directory: /tmp/rift
+        run: python3 -m unittest discover -s ui -v
+        # Asset-dependent tests (items.json / champion.json) skip themselves
+        # when the Data Dragon cache is absent. They are never faked.
+
+  ps-syntax:
+    name: powershell syntax
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse every tracked PowerShell script
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $files = @(git ls-files '*.ps1')
+          if ($files.Count -eq 0) { throw 'no tracked *.ps1 files found' }
+          $failed = @()
+          foreach ($file in $files) {
+            $tokens = $null
+            $parseErrors = $null
+            $path = (Resolve-Path -LiteralPath $file).Path
+            [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$parseErrors) | Out-Null
+            if ($parseErrors.Count -gt 0) {
+              $failed += $file
+              foreach ($parseError in $parseErrors) {
+                Write-Host "::error file=$file::$($parseError.Message)"
+              }
+            }
+          }
+          if ($failed.Count -gt 0) {
+            throw "PowerShell parse errors in: $($failed -join ', ')"
+          }
+          Write-Host "Parsed $($files.Count) PowerShell file(s) without errors."
+
+      - name: Assert expected .cmd and .iss files exist
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = @(
+            'Start-AutoCoach.cmd',
+            'Start-Ui.cmd',
+            'packaging/inno/riftsense.iss'
+          )
+          foreach ($file in $expected) {
+            if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+              throw "missing expected release file: $file"
+            }
+          }
+          Write-Host "All expected .cmd/.iss files are present."
+
+  build:
+    name: build zip + checksums
+    needs: [test, ps-syntax]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Resolve version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build release archive from tracked files
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          set -euo pipefail
+          rm -rf build
+          mkdir -p build
+          git archive --format=zip --prefix=RiftSense/ -o "build/${ZIP_STABLE}" HEAD
+          python3 - <<'PY'
+          import os
+          import zipfile
+
+          src = os.path.join('build', os.environ['ZIP_STABLE'])
+          version = os.environ['VERSION']
+          tmp = src + '.tmp'
+          with zipfile.ZipFile(src) as zin, zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as zout:
+              found = False
+              for item in zin.infolist():
+                  data = zin.read(item.filename)
+                  if item.filename == 'RiftSense/VERSION':
+                      data = (version + '\n').encode('utf-8')
+                      found = True
+                  zout.writestr(item, data)
+              if not found:
+                  raise SystemExit('RiftSense/VERSION missing from archive')
+          os.replace(tmp, src)
+
+          with zipfile.ZipFile(src) as archive:
+              names = set(archive.namelist())
+              for required in ('RiftSense/VERSION', 'RiftSense/ui/server.py', 'RiftSense/Start-Ui.cmd'):
+                  if required not in names:
+                      raise SystemExit('missing from archive: ' + required)
+              stamped = archive.read('RiftSense/VERSION').decode('utf-8').strip()
+              if stamped != version:
+                  raise SystemExit('VERSION stamp mismatch: %r != %r' % (stamped, version))
+              print('release zip ok: %d entries, VERSION=%s' % (len(names), stamped))
+          PY
+          cp "build/${ZIP_STABLE}" "build/RiftSense-win-x64-v${VERSION}.zip"
+          cp install.ps1 build/install.ps1
+          ls -l build/
+
+      - name: Generate SHA256SUMS.txt
+        working-directory: build
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          set -euo pipefail
+          sha256sum \
+            "${ZIP_STABLE}" \
+            "RiftSense-win-x64-v${VERSION}.zip" \
+            install.ps1 > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: |
+            build/RiftSense-win-x64.zip
+            build/RiftSense-win-x64-v*.zip
+            build/SHA256SUMS.txt
+            build/install.ps1
+          if-no-files-found: error
+
+  attest:
+    name: attest build provenance
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: assets
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            assets/RiftSense-win-x64.zip
+            assets/RiftSense-win-x64-v*.zip
+            assets/SHA256SUMS.txt
+            assets/install.ps1
+
+  release:
+    name: publish github release
+    needs: [build, attest]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: assets
+
+      - name: Publish release
+        working-directory: assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          PRERELEASE_FLAG=""
+          case "$GITHUB_REF_NAME" in
+            *-*) PRERELEASE_FLAG="--prerelease" ;;
+          esac
+          cat > RELEASE_NOTES.md <<EOF
+          RiftSense ${GITHUB_REF_NAME}
+
+          Assets:
+          - RiftSense-win-x64.zip - portable build; extract, then run Start-Ui.cmd and Start-AutoCoach.cmd
+          - RiftSense-win-x64-v${VERSION}.zip - same payload under the versioned name used by the Scoop manifest
+          - SHA256SUMS.txt - SHA-256 checksums for the assets above
+          - install.ps1 - per-user bootstrap installer for the latest stable release
+
+          Verify before running anything:
+            sha256sum -c SHA256SUMS.txt
+            gh attestation verify RiftSense-win-x64.zip --repo ${GITHUB_REPOSITORY}
+          EOF
+          gh release create "$GITHUB_REF_NAME" \
+            "RiftSense-win-x64.zip" \
+            "RiftSense-win-x64-v${VERSION}.zip" \
+            SHA256SUMS.txt \
+            install.ps1 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "RiftSense ${GITHUB_REF_NAME}" \
+            --notes-file RELEASE_NOTES.md \
+            --verify-tag \
+            $PRERELEASE_FLAG

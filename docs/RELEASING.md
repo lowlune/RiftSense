@@ -134,3 +134,5 @@ iscc packaging\inno\riftsense.iss /DAppVersion=<version>
 
 The result is `dist/RiftSense-Setup-<version>.exe`. Attach it to the release
 manually only if the pipeline is updated to build it in CI (it is not today).
+
+> Note: the CI workflow template currently lives at `packaging/github-workflows/release.yml` (inactive) because the push token lacks the `workflow` scope. See `packaging/github-workflows/README.md` for activation steps.
