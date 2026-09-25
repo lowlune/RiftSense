@@ -105,6 +105,10 @@
   .bcomplete { font-size: 9.5px; color: var(--green); letter-spacing: .08em; }
   .bitem .chk { position: absolute; right: -3px; bottom: -3px; background: var(--green); color: #06210f; border-radius: 50%; width: 12px; height: 12px; font-size: 8px; display: flex; align-items: center; justify-content: center; }
   .barrow { color: var(--faint); font-size: 11px; }
+  .bpurchase { display: flex; align-items: center; gap: 6px; font-size: 9.5px; color: var(--dim); white-space: nowrap; }
+  .bpurchase .gnext { font: 700 10.5px/1 "Cascadia Mono", Consolas, monospace; color: var(--gold); }
+  .bpurchase .bbuy { font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--green); }
+  .bpurchase.canbuy .gnext { color: var(--green); }
 
   #deathWrap { flex: 0 0 auto; border-bottom: 1px dashed rgba(224,93,111,.35); margin-bottom: 4px; padding-bottom: 6px; }
   .deathhead { display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 700; letter-spacing: .18em; color: #FF9A9A; text-transform: uppercase; }
@@ -246,6 +250,7 @@
     <span class="blabel"><i class="ph-fill ph-hammer"></i>BUILD</span>
     <span class="planstat" id="planStat"></span>
     <div class="bitems" id="buildItems"></div>
+    <span class="bpurchase" id="buildPurchase" style="display:none"></span>
     <span class="berr" id="buildErr"></span>
   </div>
 
@@ -315,6 +320,7 @@ let gameSeq = 0;
 let gameBusy = false;
 let currentSession = null;
 let lastPlanItems = [];
+let lastPurchase = null;
 let hlItems = [];
 let KEYWORD_RE = null;
 let KEYWORD_MAP = new Map();
@@ -945,7 +951,8 @@ function renderPlan(items){
       if (i) html += caret;
       const next = i === 0;
       const id = safeId(it.id);
-      html += `<span class="bitem ${next ? 'next' : 'todo'}" title="${esc(it.name)}${next ? ' - next buy' : ''}">`;
+      const btitle = esc(it.name) + (next ? ' - next buy' : '');
+      html += `<span class="bitem ${next ? 'next' : 'todo'}" data-btitle="${btitle}" title="${btitle}">`;
       if (id != null) html += `<img src="${cdnUrl('/img/item/' + id + '.png')}" alt="">`;
       else html += `<span style="font-size:9.5px;color:var(--dim);white-space:nowrap">${esc(it.name)}</span>`;
       html += '</span>';
@@ -954,6 +961,52 @@ function renderPlan(items){
     html += '<span class="bcomplete">plan complete</span>';
   }
   document.getElementById('buildItems').innerHTML = html;
+  renderPurchase();
+}
+
+function renderPurchase(){
+  const el = document.getElementById('buildPurchase');
+  if (!el) return;
+  const p = isObj(lastPurchase) ? lastPurchase : null;
+  const next = (p && isObj(p.next)) ? p.next : null;
+  const nextItem = document.querySelector('#buildItems .bitem.next');
+  if (nextItem) nextItem.title = nextItem.getAttribute('data-btitle') || '';
+  if (!state.inGame || !next) {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    el.title = '';
+    el.classList.remove('canbuy');
+    return;
+  }
+  const remaining = num(next.goldToComplete);
+  const exact = next.costExact !== false;
+  const goldNow = num(p.gold);
+  const affordable = next.affordableNow === true;
+  let costTxt;
+  if (!exact || remaining == null) costTxt = 'cost unknown';
+  else if (affordable) costTxt = Math.round(remaining) + 'g';
+  else costTxt = Math.max(0, Math.round(remaining - (goldNow != null ? goldNow : 0))) + 'g to go';
+  const comps = (Array.isArray(next.components) ? next.components : [])
+    .filter(c => isObj(c) && c.affordable);
+  const alts = (Array.isArray(p.alternatives) ? p.alternatives : []).filter(isObj);
+  el.classList.toggle('canbuy', affordable);
+  let html = '<span class="gnext">' + esc(costTxt) + '</span>';
+  html += '<span>' + esc(typeof next.name === 'string' ? next.name : '') + '</span>';
+  if (affordable) html += '<span class="bbuy">can afford now</span>';
+  el.innerHTML = html;
+  const tips = [];
+  for (const c of comps.slice(0, 6)) tips.push('can buy ' + c.name + ' (' + numTxt(c.goldToComplete) + 'g)');
+  for (const a of alts) tips.push('alternative: ' + a.name + ' (' + numTxt(a.goldToComplete) + 'g)');
+  for (const r of (Array.isArray(p.reasons) ? p.reasons : [])) if (typeof r === 'string') tips.push(r);
+  el.title = tips.join('\n');
+  el.style.display = 'flex';
+  if (nextItem) {
+    const notes = [costTxt];
+    if (affordable) notes.push('can afford now');
+    if (comps.length) notes.push('can buy: ' + comps.map(c => c.name + ' (' + numTxt(c.goldToComplete) + 'g)').join(', '));
+    const base = nextItem.getAttribute('data-btitle') || '';
+    nextItem.title = base + (base ? ' — ' : '') + notes.join(' · ');
+  }
 }
 
 function pickTeams(s){
@@ -1007,6 +1060,8 @@ function renderIdle(kind, msg){
   document.getElementById('buildItems').innerHTML = '';
   document.getElementById('buildErr').textContent = '';
   lastPlanItems = [];
+  lastPurchase = null;
+  renderPurchase();
   document.getElementById('deathWrap').style.display = 'none';
   document.getElementById('death').innerHTML = '';
   document.getElementById('deathAge').textContent = '';
@@ -1240,6 +1295,19 @@ async function pollPlan(){
   } catch (e) { serverReachable = false; markPanel('plan', 'offline', 'UI server unreachable'); showPlanError('plan unavailable'); setPlanStat('plan: offline', 'err'); }
 }
 
+async function pollPurchase(){
+  try {
+    const r = await fetchJson('/api/purchase', 8000);
+    if (r.status === 404) { lastPurchase = null; renderPurchase(); return; }
+    const j = r.json;
+    if (!isObj(j)) { panelFail('purchase', 'malformed response'); lastPurchase = null; renderPurchase(); return; }
+    lastPurchase = j;
+    if (j.ok || j.status === 'no_game' || j.status === 'no_identity') panelOk('purchase');
+    else panelFail('purchase', typeof j.status === 'string' ? j.status : 'unavailable');
+    renderPurchase();
+  } catch (e) { lastPurchase = null; renderPurchase(); }
+}
+
 async function pollHighlight(){
   try {
     const r = await fetchJson('/api/highlight', 8000);
@@ -1361,6 +1429,7 @@ scheduleLoop(pollCoach, 4000);
 scheduleLoop(pollDeath, 4000);
 scheduleLoop(pollCost, 5000);
 scheduleLoop(pollPlan, 10000);
+scheduleLoop(pollPurchase, 5000);
 scheduleLoop(pollHighlight, 60000);
 setInterval(updateDeathRing, 1000);
 setInterval(tickClock, 250);
