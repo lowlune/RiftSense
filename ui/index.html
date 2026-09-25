@@ -271,6 +271,7 @@
   <div class="buildstrip" id="buildStrip" style="display:none">
     <span class="blabel"><i class="ph-fill ph-hammer"></i>BUILD</span>
     <span class="planstat" id="planStat"></span>
+    <span class="hbadge st-mute" id="packBadge" style="display:none"></span>
     <div class="bitems" id="buildItems"></div>
     <span class="bpurchase" id="buildPurchase" style="display:none"></span>
     <span class="berr" id="buildErr"></span>
@@ -349,6 +350,9 @@ let gameBusy = false;
 let currentSession = null;
 let lastPlanItems = [];
 let lastPurchase = null;
+let activePack = null;
+let packKey = '';
+let packBusy = false;
 let hlItems = [];
 let KEYWORD_RE = null;
 let KEYWORD_MAP = new Map();
@@ -940,15 +944,23 @@ function renderPlan(items){
   const errEl = document.getElementById('buildErr');
   if (!state.inGame) {
     lastPlanItems = [];
+    activePack = null;
+    packKey = '';
     strip.style.display = 'none';
     document.getElementById('buildItems').innerHTML = '';
     if (errEl) errEl.textContent = '';
+    renderPackBadge();
     return;
   }
   lastPlanItems = (Array.isArray(items) ? items : [])
     .filter(it => isObj(it) && typeof it.name === 'string' && it.name.length <= 60);
   if (errEl) errEl.textContent = '';
-  if (!lastPlanItems.length) { strip.style.display = 'none'; document.getElementById('buildItems').innerHTML = ''; return; }
+  if (!lastPlanItems.length) {
+    strip.style.display = activePack ? 'flex' : 'none';
+    document.getElementById('buildItems').innerHTML = '';
+    renderPackBadge();
+    return;
+  }
   strip.style.display = 'flex';
   strip.title = 'Plan progress reflects current inventory only; sold items are not remembered';
   const me = [...(state.myTeam || []), ...(state.players || [])].find(x => isObj(x) && x.me);
@@ -990,6 +1002,62 @@ function renderPlan(items){
   }
   document.getElementById('buildItems').innerHTML = html;
   renderPurchase();
+  renderPackBadge();
+}
+
+function packLabel(pack){
+  const name = typeof pack.champion === 'string' && pack.champion ? pack.champion : 'pack';
+  const patch = typeof pack.patch === 'string' && pack.patch ? pack.patch : '';
+  const roles = Array.isArray(pack.roles) ? pack.roles.filter(r => typeof r === 'string' && r) : [];
+  const retrieved = typeof pack.retrieved === 'string' && pack.retrieved ? pack.retrieved : '';
+  const bits = ['versioned champion pack'];
+  if (roles.length) bits.push(roles.join('/'));
+  if (retrieved) bits.push('retrieved ' + retrieved);
+  return { text: 'pack ' + name + (patch ? ' \u00b7 patch ' + patch : ''), title: bits.join(' \u00b7 ') };
+}
+
+function renderPackBadge(){
+  const el = document.getElementById('packBadge');
+  const strip = document.getElementById('buildStrip');
+  if (!el) return;
+  if (!state.inGame || !isObj(activePack)) {
+    el.style.display = 'none';
+    el.textContent = '';
+    el.title = '';
+    return;
+  }
+  const info = packLabel(activePack);
+  el.className = 'hbadge st-info';
+  el.textContent = info.text;
+  el.title = info.title;
+  el.style.display = '';
+  if (strip && strip.style.display === 'none') strip.style.display = 'flex';
+}
+
+async function ensurePack(champ, role){
+  if (!state.inGame || typeof champ !== 'string' || !champ) {
+    activePack = null;
+    packKey = '';
+    renderPackBadge();
+    return;
+  }
+  const roleArg = (role && String(role).toUpperCase() !== 'NONE') ? role : '';
+  const key = champ.toLowerCase() + '|' + String(roleArg).toLowerCase();
+  if (key === packKey || packBusy) return;
+  packBusy = true;
+  packKey = key;
+  activePack = null;
+  try {
+    const url = '/api/pack?champ=' + encodeURIComponent(champ) + (roleArg ? '&role=' + encodeURIComponent(roleArg) : '');
+    const r = await fetchJson(url, 6000);
+    if (r.status === 200 && isObj(r.json) && r.json.ok === true) activePack = r.json;
+  } catch (e) {
+    packKey = '';
+    activePack = null;
+  } finally {
+    packBusy = false;
+  }
+  renderPackBadge();
 }
 
 function renderPurchase(){
@@ -1089,7 +1157,10 @@ function renderIdle(kind, msg){
   document.getElementById('buildErr').textContent = '';
   lastPlanItems = [];
   lastPurchase = null;
+  activePack = null;
+  packKey = '';
   renderPurchase();
+  renderPackBadge();
   document.getElementById('deathWrap').style.display = 'none';
   document.getElementById('death').innerHTML = '';
   document.getElementById('deathAge').textContent = '';
@@ -1122,6 +1193,7 @@ function render(s){
   const all = [...teams.mine, ...teams.foe];
   const me = all.find(p => isObj(p) && p.me);
   document.getElementById('summoner').textContent = me ? (me.name || me.champ || '—') : (teams.resolved ? '—' : 'identity unresolved');
+  ensurePack(me && me.champ, me && me.pos);
   document.getElementById('teamTitle1').textContent = teams.mineLabel;
   document.getElementById('teamTitle2').textContent = teams.foeLabel;
   buildKeywords();

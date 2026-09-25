@@ -29,6 +29,10 @@ try:
     import timeline
 except ImportError:  # package-style import (python3 -m ui.server)
     from . import timeline
+try:
+    import packs
+except ImportError:  # package-style import (python3 -m ui.server)
+    from . import packs
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(BASE)
@@ -271,6 +275,23 @@ def version_info():
         'itemCount': ASSETS.get('itemCount', 0),
         'mismatch': bool(ASSETS.get('mismatch')),
     }
+
+
+def list_packs():
+    try:
+        rows = packs.list_packs()
+    except Exception:
+        rows = []
+    return {'ok': bool(rows), 'count': len(rows), 'packs': rows}
+
+
+def load_pack(champ, role=None):
+    if not isinstance(champ, str) or not champ.strip():
+        return None
+    try:
+        return packs.select_pack(champ, role)
+    except Exception:
+        return None
 
 
 def db_health():
@@ -1189,6 +1210,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
         elif path == '/api/plan':
             plan = build_plan()
             self._send(plan, code=500 if plan.get('status') == 'read_error' else 200)
+        elif path == '/api/packs':
+            self._send(list_packs())
+        elif path == '/api/pack':
+            query = urllib.parse.parse_qs(self.path.split('?', 1)[1]) if '?' in self.path else {}
+            champ = (query.get('champ') or [''])[0]
+            role = (query.get('role') or [''])[0] or None
+            pack = load_pack(champ, role)
+            if pack is None:
+                self._send({'ok': False, 'status': 'no_pack', 'champ': champ, 'role': role}, code=404)
+            else:
+                payload = dict(pack)
+                payload['ok'] = True
+                self._send(payload)
         elif path == '/api/purchase':
             self._send(build_purchase())
         elif path == '/api/timeline':

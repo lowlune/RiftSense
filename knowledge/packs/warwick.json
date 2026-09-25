@@ -1,0 +1,194 @@
+{
+  "schema": "riftsense.pack.v1",
+  "champion": "Warwick",
+  "aliases": ["WW", "Warwick the Uncaged Wrath"],
+  "roles": ["jungle"],
+  "patch": "26.19",
+  "retrieved": "2026-09-25",
+  "sources": [
+    "https://wiki.leagueoflegends.com/en-us/Warwick",
+    "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Eternal_Hunger",
+    "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Jaws_of_the_Beast",
+    "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Blood_Hunt",
+    "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Primal_Howl",
+    "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Infinite_Duress",
+    "https://wiki.leagueoflegends.com/en-us/Warwick/Patch_history",
+    "Data Dragon 16.19.1 items.json (SR map 11 catalog shipped with RiftSense)"
+  ],
+  "mechanics": [
+    {
+      "name": "Base stats",
+      "value": "HP 620 (+99/level), mana 280 (+35), armor 33 (+4.4), MR 32 (+2.05), AD 65 (+2.5), MS 335, range 125, melee",
+      "source": "https://wiki.leagueoflegends.com/en-us/Warwick",
+      "verified": true
+    },
+    {
+      "name": "Patch history",
+      "value": "Last balance change V26.09; no Warwick changes through 26.19 per patch history - values below are treated as current for 26.19",
+      "source": "https://wiki.leagueoflegends.com/en-us/Warwick/Patch_history",
+      "verified": true
+    },
+    {
+      "name": "Passive - Eternal Hunger",
+      "value": "Basic attacks deal 6-60.76 (by level) (+15% bonus AD) (+10% AP) bonus magic damage on-hit; below 50% max HP heals for 100% of that damage, increased to 250% below 25% max HP",
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Eternal_Hunger",
+      "verified": true
+    },
+    {
+      "name": "Q - Jaws of the Beast",
+      "value": "80/85/90/95/100 mana, CD 8/7.5/7/6.5/6, 365 range; 6/7/8/9/10% of target max HP (+120% AD) (+100% AP) magic damage, capped vs monsters at 150/165/180/195/210 (+120% AD) (+100% AP); heals for 25/37.5/50/62.5/75% of post-mitigation damage",
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Jaws_of_the_Beast",
+      "verified": true
+    },
+    {
+      "name": "Q hold and immunity",
+      "value": "Tapped: lunge and bite. Held: bite then 0.5 s charge and leap behind the target; Warwick is displacement-immune while Q is active and follows the target's movement. Can be interrupted by cast-inhibiting effects (silence); grounding/rooting prevents starting the held channel",
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Jaws_of_the_Beast",
+      "verified": true
+    },
+    {
+      "name": "W - Blood Hunt",
+      "value": "55 mana, CD 80/70/60/50/40; passive +70/80/90/100/110% attack speed for 1.25 s when damaging a target below 50% max HP (doubled below 25%); +35/42.5/50/57.5/65% MS while following a trail, lost 0.5 s on entering champion combat and rebuilding over 3.5 s; active marks the nearest enemy champion for 8 s regardless of current HP; CD reduced 30% if no champion is found",
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Blood_Hunt",
+      "verified": true
+    },
+    {
+      "name": "E - Primal Howl",
+      "value": "40 mana, CD 15/14/13/12/11; gain 35-55% damage reduction for up to 2.75 s; recast after 1 s (auto after duration) to fear nearby enemies for 1 s and slow 90% in a 375 radius; recast resets Warwick's basic attack timer",
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Primal_Howl",
+      "verified": true
+    },
+    {
+      "name": "R - Infinite Duress",
+      "value": "100 mana, CD 110-70, 0.1 s cast; leaps with crowd-control immunity and stops on the first champion hit, suppressing them for up to 1.5 s; total 175-525 (+167% bonus AD) magic damage over the channel, healing 100% of post-mitigation damage dealt; applies on-hit effects and triggers on-attack effects 3 times; dash range scales with movement speed",
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Infinite_Duress",
+      "verified": true
+    },
+    {
+      "name": "R counters",
+      "value": "A target that is CC-immune or spell-shielded when Warwick collides stops the channel from starting; Cleanse removes the suppression but does not stop the channel damage ticks",
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Infinite_Duress",
+      "verified": true
+    }
+  ],
+  "itemNotes": [
+    {
+      "name": "Blade of The Ruined King",
+      "note": "3200 g (SR catalog); on-hit % current HP damage; Q applies on-hit effects, so Q + BotRK is the health-stacking answer",
+      "source": "Data Dragon 16.19.1 items.json (id 3153)",
+      "verified": true
+    },
+    {
+      "name": "Plated Steelcaps",
+      "note": "1200 g; 25 armor and incoming basic damage reduced by 10% (excludes turrets) - default boots into auto-attack-heavy comps",
+      "source": "Data Dragon 16.19.1 items.json (id 3047)",
+      "verified": true
+    },
+    {
+      "name": "Thornmail",
+      "note": "2450 g; applies Grievous Wounds (40% reduced healing) - the anti-heal answer when the enemy team sustains through fights",
+      "source": "Data Dragon 16.19.1 items.json (id 3075)",
+      "verified": true
+    },
+    {
+      "name": "Kaenic Rookern",
+      "note": "2900 g; 80 MR and a shield for 15% max HP after 15 s without taking magic damage - anti burst-magic",
+      "source": "Data Dragon 16.19.1 items.json (id 2504)",
+      "verified": true
+    },
+    {
+      "name": "Sterak's Gage",
+      "note": "3200 g; burst shield when taking large damage - anti burst-AD third item when the enemy can lock Warwick down",
+      "source": "Data Dragon 16.19.1 items.json (id 3053)",
+      "verified": true
+    },
+    {
+      "name": "Build plan source",
+      "note": "Follow PLAN[Warwick] in build_intent.txt (Blade of The Ruined King -> Plated Steelcaps -> Thornmail -> Kaenic Rookern -> Sterak's Gage); propose a one-clause swap instead of rewriting the plan",
+      "source": "build_intent.txt",
+      "verified": true
+    }
+  ],
+  "decisionRules": [
+    {
+      "rule": "Max Q first; Q applies on-hit effects, so Blade of The Ruined King turns Q into a % max HP nuke against health stackers",
+      "preconditions": ["BotRK is owned or next in the plan", "target has high max HP"],
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Jaws_of_the_Beast",
+      "verified": true
+    },
+    {
+      "rule": "Hold Q against mobile targets so the displacement immunity follows their dash or blink; tap Q when chasing a kill for the cooldown refund",
+      "preconditions": ["target has an escape dash/blink", "Q is off cooldown"],
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Jaws_of_the_Beast",
+      "verified": true
+    },
+    {
+      "rule": "Start ganks with W active: the active marks the target for 8 s regardless of health, and the trail movement speed rebuilds over 3.5 s after combat starts, so approach from fog rather than running in plain sight",
+      "preconditions": ["W is off cooldown", "gank path is not already warded (unknown is fine, label it)"],
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Blood_Hunt",
+      "verified": true
+    },
+    {
+      "rule": "Use E's 35-55% damage reduction before committing to a melee trade, then recast for the fear to lock the target for Q/R",
+      "preconditions": ["E is off cooldown", "enemy burst is committed or you are diving"],
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Primal_Howl",
+      "verified": true
+    },
+    {
+      "rule": "Do not open with R into a spell shield or a CC-immune target; the channel will not start, wasting the 110-70 s cooldown",
+      "preconditions": ["enemy defensive cooldowns are observed or unknown (state as unknown)", "R is up"],
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Infinite_Duress",
+      "verified": true
+    },
+    {
+      "rule": "After R lands, R deals on-hit damage and heals 100% of the post-mitigation damage - R is the burst heal, so it is acceptable to R a front-liner to survive when the carries are unreachable",
+      "preconditions": ["R is up", "Warwick is low HP and must stay alive"],
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Infinite_Duress",
+      "verified": true
+    },
+    {
+      "rule": "Take Thornmail over a damage item when the enemy team has 2+ sustained healing sources; Grievous Wounds cuts healing 40%",
+      "preconditions": ["enemy healing sources observed", "the fight is long enough for GW uptime"],
+      "source": "Data Dragon 16.19.1 items.json (id 3075)",
+      "verified": true
+    },
+    {
+      "rule": "Against burst magic take Kaenic Rookern; against sustained magic take Force of Nature or Spirit Visage; against burst AD take Sterak's Gage after core",
+      "preconditions": ["enemy damage profile can be classified", "item slot and gold available"],
+      "source": "Data Dragon 16.19.1 items.json",
+      "verified": true
+    },
+    {
+      "rule": "Do not assume the passive heal saves you: Grievous Wounds (40%) and Ignite cut all self-healing, so back off while anti-heal is active",
+      "preconditions": ["enemy anti-heal observed", "Warwick is relying on Q/passive healing"],
+      "source": "https://wiki.leagueoflegends.com/en-us/Grievous_Wounds",
+      "verified": true
+    }
+  ],
+  "counters": [
+    {
+      "name": "Grievous Wounds / Ignite",
+      "note": "Cuts Warwick's passive, Q and R healing by 40%; do not fight through it at low HP, and itemise Spirit Visage only after the anti-heal is answered",
+      "source": "https://wiki.leagueoflegends.com/en-us/Grievous_Wounds",
+      "verified": true
+    },
+    {
+      "name": "Spell shields (e.g. Banshee's, Edge of Night)",
+      "note": "Block Q damage and prevent Infinite Duress from starting its channel; pop the shield with W/E first",
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Infinite_Duress",
+      "verified": true
+    },
+    {
+      "name": "Kiting and grounding",
+      "note": "Grounding prevents starting the held Q channel; hard slows and knockbacks keep Warwick off the carry - hold E for the fear instead of chasing",
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Jaws_of_the_Beast",
+      "verified": true
+    },
+    {
+      "name": "Cleanse / QSS",
+      "note": "Cleanse removes the R suppression but does not stop the damage ticks; the target still takes the full channel damage",
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Infinite_Duress",
+      "verified": true
+    }
+  ]
+}

@@ -1,0 +1,296 @@
+{
+  "schema": "riftsense.pack.v1",
+  "champion": "Nunu & Willump",
+  "aliases": ["Nunu", "Willump", "Nunu and Willump"],
+  "roles": ["jungle"],
+  "patch": "26.19",
+  "retrieved": "2026-09-23",
+  "sources": [
+    "https://wiki.leagueoflegends.com/en-us/Nunu",
+    "https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume",
+    "https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Biggest_Snowball_Ever!",
+    "https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Snowball_Barrage",
+    "https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Absolute_Zero",
+    "https://wiki.leagueoflegends.com/en-us/Smite",
+    "https://wiki.leagueoflegends.com/en-us/Dark_Harvest",
+    "https://wiki.leagueoflegends.com/en-us/Dragon_pit",
+    "https://wiki.leagueoflegends.com/en-us/Voidgrub_camp",
+    "https://wiki.leagueoflegends.com/en-us/Rift_Herald",
+    "https://wiki.leagueoflegends.com/en-us/Rift_Scuttler_camp",
+    "https://wiki.leagueoflegends.com/en-us/Module:ItemData/data",
+    "https://u.gg/lol/champions/nunu/build?role=jungle",
+    "https://op.gg/lol/champions/nunu/build/jungle"
+  ],
+  "mechanics": [
+    {
+      "name": "Base stats",
+      "value": "HP 610 (+90/level), mana 280 (+42), armor 29 (+4.2), MR 32 (+2.05), AD 61 (+3), MS 345, range 125, melee",
+      "source": "https://wiki.leagueoflegends.com/en-us/Nunu",
+      "verified": true
+    },
+    {
+      "name": "Passive - Call of the Freljord",
+      "value": "Damaging a champion, large monster or structure grants Nunu and one nearby ally 20% AS and 10% MS for 4 s, prioritising the highest-AS ally; max remaining duration 44 s",
+      "source": "https://wiki.leagueoflegends.com/en-us/Nunu",
+      "verified": true
+    },
+    {
+      "name": "Q - Consume vs monsters/minions",
+      "value": "400/600/800/1000/1200 true damage by rank, no AP ratio; base heal 65/95/125/155/185 (+90% AP) (+10% bonus HP); empowered below 50% HP 97.5/142.5/187.5/232.5/277.5 (+135% AP) (+15% bonus HP); 60 mana, CD 13/12/11/10/9",
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume",
+      "verified": true
+    },
+    {
+      "name": "Q - Consume vs champions",
+      "value": "60/100/140/180/220 (+65% AP) (+5% bonus HP) magic damage; heal is only 60% of that; camps heal far more, so Q a camp/minion over a champion when a fight allows",
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume",
+      "verified": true
+    },
+    {
+      "name": "W - Biggest Snowball Ever!",
+      "value": "50-70 mana, 14 s CD, rolls up to 10 s; min damage 36/45/54/63/72 (+30% AP), max 180/225/270/315/360 (+150% AP); knockup 0.5-0.75 s then stun 0-0.75 s by charge; disabled for the first 15 s of the game",
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Biggest_Snowball_Ever!",
+      "verified": true
+    },
+    {
+      "name": "E - Snowball Barrage",
+      "value": "50-70 mana, CD 14/13/12/11/10; per hit 15/22.5/30/37.5/45 (+12% AP); 9 hits max (3 volleys) = 405 base (+108% AP) total; 3 hits slow and Snowbound targets root for 0.5-1.62 s 3 s after the first cast",
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Snowball_Barrage",
+      "verified": true
+    },
+    {
+      "name": "E AP arithmetic (audit correction)",
+      "value": "9 hits x 12% AP = +108% AP max; the older '+135% AP' figure was an arithmetic error and must not be repeated",
+      "source": "derived from https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Snowball_Barrage",
+      "verified": true
+    },
+    {
+      "name": "R - Absolute Zero",
+      "value": "100 mana, CD 110/100/90, channel up to 3 s, radius 650; shield 65/75/85 (+150% AP) (+30/40/50% bonus HP); max damage 625/950/1275 (+300% AP); Flash/Teleport/Recall/Hexflash interrupt and auto-detonate the channel (Flash first, then R)",
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Absolute_Zero",
+      "verified": true
+    },
+    {
+      "name": "Skill order",
+      "value": "Q > E > W; max Q first (rank 5 Q = 1200 monster true damage); R at 6/11/16",
+      "source": "https://u.gg/lol/champions/nunu/build?role=jungle",
+      "verified": true
+    },
+    {
+      "name": "Smite stages",
+      "value": "Flat, not level-based: Smite 600 true damage, Unleashed Smite 1000 after 15 pet treats, Primal Smite 1400 after 35 treats; 15 s CD, 90 s recharge, max 2 charges",
+      "source": "https://wiki.leagueoflegends.com/en-us/Smite",
+      "verified": true
+    },
+    {
+      "name": "Dark Harvest",
+      "value": "30 (+11 per soul) (+10% bonus AD) (+5% AP); triggers below 50% max HP only; 35 s CD, resets to 1 s on takedown; Liandry's burn is proc damage and does NOT trigger it",
+      "source": "https://wiki.leagueoflegends.com/en-us/Dark_Harvest",
+      "verified": true
+    },
+    {
+      "name": "Dragon timers and HP",
+      "value": "First elemental drake spawns 5:00, respawns every 5:00; soul is a team's 4th elemental drake, then Elder on a 6:00 timer; elemental drake HP 5106.25-10000 by level",
+      "source": "https://wiki.leagueoflegends.com/en-us/Dragon_pit",
+      "verified": true
+    },
+    {
+      "name": "Voidgrubs and Herald",
+      "value": "Voidgrubs 8:00-14:45, single spawn, 3 grubs at 2269-4700 HP; Rift Herald 15:00-19:45 at 11718-18900 HP",
+      "source": "https://wiki.leagueoflegends.com/en-us/Voidgrub_camp",
+      "verified": true
+    },
+    {
+      "name": "Camp and scuttle timers",
+      "value": "Small camps respawn 2:15, buffs 5:00; first scuttler 2:55, respawn 2:30, first scuttlers have 35% reduced HP",
+      "source": "https://wiki.leagueoflegends.com/en-us/Rift_Scuttler_camp",
+      "verified": true
+    },
+    {
+      "name": "Dragon Slayer damage reduction vs true damage",
+      "value": "Elemental drakes gain 15% damage reduction per Dragon Slayer stack (up to 60% at 4 stacks), but whether that reduction applies to Q/Smite true damage is NOT established; no reduced secure threshold is published here",
+      "source": "https://wiki.leagueoflegends.com/en-us/Dragon_pit",
+      "verified": false
+    },
+    {
+      "name": "Zeke's Convergence tick total",
+      "value": "Frostfire Tempest hits for 30 magic damage every 0.25 s for 5 s (up to 600 by raw arithmetic), but the real number of damaging ticks is not verified - never quote a fixed total",
+      "source": "https://wiki.leagueoflegends.com/en-us/Zeke%27s_Convergence",
+      "verified": false
+    }
+  ],
+  "itemNotes": [
+    {
+      "name": "Liandry's Torment",
+      "note": "3000 g, 60 AP, 300 HP; 1% max HP burn per 0.5 s over 3 s = 6% max HP, capped at 120 vs monsters; Suffering +2% damage per second up to +6%; modern Liandry's has no slow-based amplification",
+      "source": "https://wiki.leagueoflegends.com/en-us/Module:ItemData/data",
+      "verified": true
+    },
+    {
+      "name": "Rylai's Crystal Scepter",
+      "note": "2600 g, 65 AP, 400 HP; ability damage slows 30% for 1 s; does not extend or amplify Liandry's burn; no dedicated damage passive (its AP still scales ratios); situational stickiness pick, not a default",
+      "source": "https://wiki.leagueoflegends.com/en-us/Module:ItemData/data",
+      "verified": true
+    },
+    {
+      "name": "Defensive item picks",
+      "note": "Spirit Visage 2700 g (+25% healing/shields), Kaenic Rookern 2900 g (80 MR, 15% max HP shield vs burst magic), Force of Nature 2800 g (8 stacks to +70 MR vs sustained magic), Zhonya's Hourglass 3250 g (2.5 s stasis)",
+      "source": "https://wiki.leagueoflegends.com/en-us/Module:ItemData/data",
+      "verified": true
+    },
+    {
+      "name": "Dark Seal and Mejai's",
+      "note": "Dark Seal 350 g, +4 AP per stack up to 10, lose 5 on death; Mejai's 1500 g, +5 AP per stack up to 25, lose 10 on death; skip Mejai's when deaths are stacking",
+      "source": "https://wiki.leagueoflegends.com/en-us/Module:ItemData/data",
+      "verified": true
+    },
+    {
+      "name": "Grievous Wounds",
+      "note": "40% reduced healing; Oblivion Orb 800 g applies it on magic damage; Morellonomicon 2850 g upgrades it",
+      "source": "https://wiki.leagueoflegends.com/en-us/Grievous_Wounds",
+      "verified": true
+    },
+    {
+      "name": "Boot win-rate comparison",
+      "note": "op.gg current patch: Plated Steelcaps 55.03% WR (33.37% pick) vs Sorcerer's Shoes 50.17% (28.53%); raw win-rate comparison with undisclosed sample/rank - not causal and not matchup-specific",
+      "source": "https://op.gg/lol/champions/nunu/build/jungle",
+      "verified": false
+    },
+    {
+      "name": "Sampled core builds",
+      "note": "op.gg cores are tiny samples (13/22/27 games) with selection bias (winning players pick items); treat as hypotheses to test, never as unconditional advice",
+      "source": "https://op.gg/lol/champions/nunu/build/jungle",
+      "verified": false
+    }
+  ],
+  "decisionRules": [
+    {
+      "rule": "At a drake spawn, start the dragon when the enemy jungler shows top AND you have pit vision plus lane priority; otherwise do not blind-start it",
+      "preconditions": ["enemy jungler position observed", "vision on the pit", "lane priority or lanes cannot collapse", "Smite stage confirmed"],
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume",
+      "verified": true
+    },
+    {
+      "rule": "Secure window uses your actual Smite stage: base Smite adds 600, Unleashed adds 1000, Primal adds 1400; with Unleashed, L6 = 800+1000 = 1800 and L9 = 1200+1000 = 2200",
+      "preconditions": ["Q rank known", "Smite stage confirmed from pet treats (15/35)"],
+      "source": "https://wiki.leagueoflegends.com/en-us/Smite",
+      "verified": true
+    },
+    {
+      "rule": "Do not call a concrete secure number on your 2nd/3rd drake; treat effective burst as unknown because the Dragon Slayer reduction interaction is unverified",
+      "preconditions": ["attacking team already has at least one elemental drake"],
+      "source": "https://wiki.leagueoflegends.com/en-us/Dragon_pit",
+      "verified": true
+    },
+    {
+      "rule": "If they have 2+ Heartsteel stackers, buy Liandry's before Rylai's; also deny Heartsteel stacks by breaking 700-unit contact",
+      "preconditions": ["enemy items observed", "2+ enemy Heartsteel holders or HP stackers"],
+      "source": "https://wiki.leagueoflegends.com/en-us/Heartsteel",
+      "verified": true
+    },
+    {
+      "rule": "If they have a fed AP burst mage, take Zhonya's after core; remember every item active except Shurelya's, Youmuu's and Randuin's interrupts your R channel",
+      "preconditions": ["enemy AP burst threat identified", "R channel is part of the plan"],
+      "source": "https://wiki.leagueoflegends.com/en-us/Zhonya%27s_Hourglass",
+      "verified": true
+    },
+    {
+      "rule": "If they have 2+ auto-attack carries and you are not snowballing, Plated Steelcaps is the reasonable default over Sorcerer's Shoes; take Sorcs only when snowballing or when AP burst is needed",
+      "preconditions": ["enemy damage profile observed", "supporting win-rate data is not causal"],
+      "source": "https://wiki.leagueoflegends.com/en-us/Module:ItemData/data",
+      "verified": true
+    },
+    {
+      "rule": "Match defensive MR to threat type: Kaenic Rookern vs burst magic, Force of Nature vs sustained magic (Cassiopeia/Swain/Ryze)",
+      "preconditions": ["enemy magic threat can be classified as burst vs sustained"],
+      "source": "https://wiki.leagueoflegends.com/en-us/Module:ItemData/data",
+      "verified": true
+    },
+    {
+      "rule": "If they have 2+ healers, buy Oblivion Orb (800 g) by first back and finish Morellonomicon by mid-game; every Nunu ability applies Grievous Wounds on magic damage",
+      "preconditions": ["enemy healing sources observed", "gold for first back available"],
+      "source": "https://wiki.leagueoflegends.com/en-us/Grievous_Wounds",
+      "verified": true
+    },
+    {
+      "rule": "If you died 2+ times before 8:00, skip Mejai's and stabilise on Voidgrubs and scuttle instead",
+      "preconditions": ["death count and game clock observed"],
+      "source": "https://wiki.leagueoflegends.com/en-us/Voidgrub_camp",
+      "verified": true
+    },
+    {
+      "rule": "If the enemy jungler dies or shows opposite side between 8:00 and 14:45, take Voidgrubs; Q rank 4 plus Unleashed Smite is about 88% of a 2269 HP grub",
+      "preconditions": ["enemy jungler position observed", "Q rank 4 (level 7+)", "Unleashed Smite"],
+      "source": "https://wiki.leagueoflegends.com/en-us/Voidgrub_camp",
+      "verified": true
+    },
+    {
+      "rule": "Teamfight combo: charged W from fog (0.75 s knockup + up to 0.75 s stun), then E to root, then full-channel R on the clustered backline; Flash first, then R",
+      "preconditions": ["R is up", "key point-and-click interrupts are down or unknown", "enemies grouped or channelling"],
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Absolute_Zero",
+      "verified": true
+    },
+    {
+      "rule": "If 2+ levels behind at a drake spawn, prefer to give it and play the Herald timer instead; this is a risk-preference rule, not a proven 'cannot out-secure' fact",
+      "preconditions": ["level gap observed", "Herald window still ahead"],
+      "source": "https://wiki.leagueoflegends.com/en-us/Smite",
+      "verified": true
+    },
+    {
+      "rule": "Do not contest an objective without a Smite charge, with R down, or with no vision/priority; Nunu re-enters on the 2:15/5:00 camp cycles instead of flipping blind",
+      "preconditions": ["Smite charges, R cooldown and vision state are known"],
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Absolute_Zero",
+      "verified": true
+    },
+    {
+      "rule": "A failed gank should be treated as an unquantified opportunity cost; do not claim it equals a full camp cycle as if measured",
+      "preconditions": [],
+      "source": "heuristic",
+      "verified": false
+    }
+  ],
+  "counters": [
+    {
+      "name": "Heartsteel",
+      "note": "Break 700-unit contact to deny stacks; Liandry's 6% max HP burn + Suffering scales against their HP; Abyssal Mask aura adds 12% team magic damage onto them",
+      "source": "https://wiki.leagueoflegends.com/en-us/Heartsteel",
+      "verified": true
+    },
+    {
+      "name": "Blackfire Torch",
+      "note": "Its burn amplifies enemy mages; buy MR (Rookern/Spirit Visage) and kill the holder first with W+E into R; do not group tightly while it ticks",
+      "source": "https://wiki.leagueoflegends.com/en-us/Blackfire_Torch",
+      "verified": true
+    },
+    {
+      "name": "Youmuu's Ghostblade",
+      "note": "Lethality assassin: Zhonya's and Plated Steelcaps blunt the burst; catch them with W slow/knockup and E root; force Wraith Step before committing R",
+      "source": "https://wiki.leagueoflegends.com/en-us/Youmuu%27s_Ghostblade",
+      "verified": true
+    },
+    {
+      "name": "Kraken Slayer",
+      "note": "Missing-HP on-hit shreds you low: Plated Steelcaps (-10% basic damage), attack-speed slows, and Zhonya's for the third-hit window; kill the marksman with a full-channel R",
+      "source": "https://wiki.leagueoflegends.com/en-us/Kraken_Slayer",
+      "verified": true
+    },
+    {
+      "name": "Zeke's Convergence",
+      "note": "Frostfire Tempest is a 350-radius zone for 5 s on a 45 s CD tied to their ultimate; channel R from outside 350 units or after the storm ends",
+      "source": "https://wiki.leagueoflegends.com/en-us/Zeke%27s_Convergence",
+      "verified": true
+    },
+    {
+      "name": "Locket of the Iron Solari",
+      "note": "Force the active with poke, wait out the 2.5 s decaying shield, then re-engage inside the 90 s CD; the shield is centred on the holder and covers allies within 850, so your spacing does not reduce its target count",
+      "source": "https://wiki.leagueoflegends.com/en-us/Locket_of_the_Iron_Solari",
+      "verified": true
+    },
+    {
+      "name": "Solstice Sleigh",
+      "note": "It triggers when the HOLDER slows or immobilises an enemy (not when your W/E slows them); expect +50-230 effective HP on the support and their most-wounded ally; re-engage after the 30 s CD",
+      "source": "https://wiki.leagueoflegends.com/en-us/Solstice_Sleigh",
+      "verified": true
+    }
+  ]
+}
