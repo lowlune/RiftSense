@@ -24,3 +24,10 @@ items.json
 # python
 __pycache__/
 *.pyc
+
+# auto-updater state and staged files (runtime, never commit)
+update_state.json
+.update/
+
+# local release builds
+dist/
