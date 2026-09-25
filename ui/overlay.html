@@ -4,9 +4,28 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RiftSense Overlay</title>
+<!--
+  RiftSense stream-safe overlay.
+  Renders only the game clock, objective timers, and model-written action or
+  death text. It never renders account, tagline, cost, plan, or purchase data.
+  Model-written text can still contain player or champion names, so this view
+  cannot promise full anonymity. Use privacy=strict to cap action text length
+  and strip Name#TAG patterns before display.
+  Query params:
+    bg=dark|transparent|chroma   background mode
+    chroma=RRGGBB                chroma key color
+    scale=<n>                    global scale (0.4-4)
+    clockScale/actionScale/timerScale=<n>  independent overrides
+    poll=<ms>                    poll interval (1000-15000)
+    preset=default|corner|strip|second-monitor
+    privacy=normal|strict
+-->
 <style>
   :root {
     --scale: 1;
+    --clock-scale: var(--scale);
+    --action-scale: var(--scale);
+    --timer-scale: var(--scale);
     --chroma: #00B140;
     --text: #F5F1E6;
     --dim: #A9B4C4;
@@ -14,6 +33,8 @@
     --red: #FF8A8A;
     --green: #6FE3A0;
     --amber: #F2C15C;
+    --panel: rgba(0,0,0,.52);
+    --border: rgba(255,255,255,.18);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
@@ -27,19 +48,35 @@
   body.bg-chroma { background: var(--chroma); }
   .wrap {
     height: 100%;
+    min-height: 0;
     padding: calc(18px * var(--scale)) calc(24px * var(--scale));
     display: flex;
     flex-direction: column;
     justify-content: center;
     gap: calc(12px * var(--scale));
     text-shadow: 0 2px calc(8px * var(--scale)) rgba(0,0,0,.65);
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
   }
   body.bg-chroma .wrap { text-shadow: none; color: #06210F; }
-  body.bg-chroma .dim, body.bg-chroma .clock, body.bg-chroma .val { color: #06210F; }
+  body.bg-chroma .dim, body.bg-chroma .clock, body.bg-chroma .val,
+  body.bg-chroma .state, body.bg-chroma .sources { color: #06210F; }
 
   .top { display: flex; align-items: baseline; justify-content: space-between; gap: calc(18px * var(--scale)); flex-wrap: wrap; }
   .clock {
-    font: 700 calc(64px * var(--scale))/1 "Cascadia Mono", Consolas, monospace;
+    font: 700 calc(64px * var(--clock-scale))/1 "Cascadia Mono", Consolas, monospace;
     color: #FFFFFF;
     letter-spacing: .02em;
   }
@@ -51,62 +88,155 @@
   .conn.conn-dead { color: var(--red); }
   .conn.conn-idle { color: var(--dim); }
 
+  .actions { display: flex; flex-direction: column; gap: calc(12px * var(--scale)); }
   .line {
     display: flex;
     align-items: baseline;
     gap: calc(14px * var(--scale));
-    background: rgba(0,0,0,.42);
-    border: calc(2px * var(--scale)) solid rgba(255,255,255,.14);
+    background: var(--panel);
+    border: calc(2px * var(--scale)) solid var(--border);
     border-radius: calc(12px * var(--scale));
     padding: calc(12px * var(--scale)) calc(16px * var(--scale));
   }
-  body.bg-chroma .line { background: rgba(255,255,255,.55); border-color: rgba(0,0,0,.25); }
+  body.bg-chroma .line { background: rgba(255,255,255,.6); border-color: rgba(0,0,0,.3); }
   .line .tag {
     flex: 0 0 auto;
     font: 700 calc(16px * var(--scale))/1 "Cascadia Mono", Consolas, monospace;
     letter-spacing: .1em;
     padding: calc(5px * var(--scale)) calc(8px * var(--scale));
     border-radius: calc(6px * var(--scale));
-    background: rgba(255,255,255,.14);
+    background: rgba(255,255,255,.16);
+    color: #FFFFFF;
   }
   #donow .tag { background: var(--gold); color: #131313; }
-  #death .tag { background: rgba(224,93,111,.9); color: #1A0707; }
-  .line .text { font-size: calc(34px * var(--scale)); line-height: 1.25; min-width: 0; overflow-wrap: anywhere; }
-  #death .text { font-size: calc(30px * var(--scale)); color: var(--red); }
+  #death .tag { background: #E05D6F; color: #1A0707; }
+  .line .text { font-size: calc(34px * var(--action-scale)); line-height: 1.25; min-width: 0; overflow-wrap: anywhere; }
+  #death .text { font-size: calc(30px * var(--action-scale)); color: var(--red); }
   body.bg-chroma #death .text { color: #4A0D17; }
 
   .objs { display: flex; gap: calc(28px * var(--scale)); flex-wrap: wrap; }
   .obj { display: flex; align-items: baseline; gap: calc(10px * var(--scale)); }
   .obj .lab { font-size: calc(16px * var(--scale)); font-weight: 700; letter-spacing: .2em; color: var(--dim); }
-  .obj .val { font: 700 calc(40px * var(--scale))/1 "Cascadia Mono", Consolas, monospace; color: #FFFFFF; }
+  .obj .val { font: 700 calc(40px * var(--timer-scale))/1 "Cascadia Mono", Consolas, monospace; color: #FFFFFF; }
+  .obj .state { font-size: calc(15px * var(--timer-scale)); font-weight: 700; letter-spacing: .14em; color: var(--dim); }
   .obj.up .val { color: var(--green); }
+  .obj.up .state { color: var(--green); }
   .obj.soon .val { color: var(--amber); }
+  .obj.soon .state { color: var(--amber); }
+  .obj.stale .val { color: var(--dim); }
+  .obj.stale .state { color: var(--dim); }
+  body.bg-chroma .obj .val, body.bg-chroma .obj .state { color: #06210F; }
 
   .sources { font-size: calc(12px * var(--scale)); font-weight: 600; letter-spacing: .08em; color: var(--dim); text-transform: lowercase; }
+
+  body.preset-corner .wrap {
+    justify-content: flex-end;
+    align-items: flex-start;
+    gap: calc(6px * var(--scale));
+  }
+  body.preset-corner .clock { font-size: calc(40px * var(--clock-scale)); }
+  body.preset-corner .line .text { font-size: calc(24px * var(--action-scale)); }
+  body.preset-corner #death .text { font-size: calc(22px * var(--action-scale)); }
+  body.preset-corner .obj .val { font-size: calc(28px * var(--timer-scale)); }
+  body.preset-corner .obj .state { font-size: calc(13px * var(--timer-scale)); }
+  body.preset-corner .sources { display: none; }
+
+  body.preset-strip .wrap {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    gap: calc(14px * var(--scale));
+  }
+  body.preset-strip .top { flex-wrap: nowrap; gap: calc(10px * var(--scale)); }
+  body.preset-strip .clock { font-size: calc(32px * var(--clock-scale)); }
+  body.preset-strip .actions { flex-direction: row; flex-wrap: nowrap; gap: calc(10px * var(--scale)); }
+  body.preset-strip .line { padding: calc(6px * var(--scale)) calc(10px * var(--scale)); }
+  body.preset-strip .line .text {
+    font-size: calc(20px * var(--action-scale));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  body.preset-strip #death .text { font-size: calc(20px * var(--action-scale)); }
+  body.preset-strip .objs { flex-wrap: nowrap; gap: calc(16px * var(--scale)); }
+  body.preset-strip .obj .val { font-size: calc(24px * var(--timer-scale)); }
+  body.preset-strip .sources { display: none; }
+
+  body.preset-second-monitor .wrap {
+    justify-content: center;
+    padding: calc(28px * var(--scale)) calc(40px * var(--scale));
+    gap: calc(16px * var(--scale));
+  }
+  body.preset-second-monitor .clock { font-size: calc(76px * var(--clock-scale)); }
+  body.preset-second-monitor .line .text { font-size: calc(38px * var(--action-scale)); }
+  body.preset-second-monitor #death .text { font-size: calc(34px * var(--action-scale)); }
+  body.preset-second-monitor .obj .val { font-size: calc(48px * var(--timer-scale)); }
+
+  @media (max-width: 640px) {
+    .wrap { padding: calc(10px * var(--scale)) calc(12px * var(--scale)); gap: calc(8px * var(--scale)); }
+    .clock { font-size: calc(44px * var(--clock-scale)); }
+    .line .text { font-size: calc(24px * var(--action-scale)); }
+    #death .text { font-size: calc(22px * var(--action-scale)); }
+    .obj .val { font-size: calc(30px * var(--timer-scale)); }
+  }
+  @media (max-height: 320px) {
+    .wrap { justify-content: flex-start; gap: calc(6px * var(--scale)); }
+    .clock { font-size: calc(34px * var(--clock-scale)); }
+    .line .text { font-size: calc(22px * var(--action-scale)); }
+    #death .text { font-size: calc(20px * var(--action-scale)); }
+    .obj .val { font-size: calc(26px * var(--timer-scale)); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
 </style>
 </head>
-<body class="bg-dark">
+<body class="bg-dark preset-default">
 <div class="wrap" id="wrap">
+  <h1 class="sr-only">RiftSense live overlay</h1>
   <div class="top">
-    <div class="clock" id="clock">--:--</div>
-    <div class="conn conn-wait" id="conn">connecting</div>
+    <div class="clock" id="clock" role="timer" aria-label="game clock">--:--</div>
+    <div class="conn conn-wait" id="conn" role="status" aria-live="polite">connecting</div>
   </div>
-  <div class="line" id="donow" style="display:none"><span class="tag">DO NOW</span><span class="text" id="donowText"></span></div>
-  <div class="line" id="death" style="display:none"><span class="tag">DIED</span><span class="text" id="deathText"></span></div>
-  <div class="objs">
-    <div class="obj" id="objDragon"><span class="lab">DRAGON</span><span class="val" id="dragonVal">--:--</span></div>
-    <div class="obj" id="objBaron"><span class="lab">BARON</span><span class="val" id="baronVal">--:--</span></div>
-  </div>
+  <section class="actions" aria-label="active coaching">
+    <article class="line" id="donow" role="status" aria-live="polite" aria-atomic="true" style="display:none"><span class="tag">DO NOW</span><span class="text" id="donowText"></span></article>
+    <article class="line" id="death" aria-label="death report" style="display:none"><span class="tag">DIED</span><span class="text" id="deathText"></span></article>
+  </section>
+  <section class="objs" role="group" aria-label="objective timers">
+    <div class="obj" id="objDragon"><h2 class="lab">DRAGON</h2><span class="val" id="dragonVal">--:--</span><span class="state" id="dragonState"></span></div>
+    <div class="obj" id="objBaron"><h2 class="lab">BARON</h2><span class="val" id="baronVal">--:--</span><span class="state" id="baronState"></span></div>
+  </section>
   <div class="sources" id="sources"></div>
 </div>
 <script>
+/* Overlay model: poll /api/action as the authoritative action when the server
+   exposes it; otherwise fall back to the coach DO NOW and fresh death reports.
+   Actions carry priority (3 death > 2 objective > 1 coach) and a TTL by kind:
+   death 60s, objective 90s, coach 90s. Age comes from ageSec, observedAt, or
+   expiresAt, plus time elapsed since fetch. Game-state transitions clear all
+   transient action state and immediately re-poll. */
 (function(){
 'use strict';
-
 var FRESH_WINDOW_MS = 6000;
 var GAME_TIME_MAX = 6 * 60 * 60;
-var SOURCE_NAMES = ['game', 'coach', 'death', 'timeline'];
+var SOURCE_NAMES = ['game', 'coach', 'death', 'timeline', 'action'];
 var BG_MODES = ['dark', 'transparent', 'chroma'];
+var PRESETS = ['default', 'corner', 'strip', 'second-monitor'];
+var PRESET_DEFAULTS = {
+  'default': { clock: 1, action: 1, timer: 1 },
+  'corner': { clock: 0.8, action: 0.85, timer: 0.75 },
+  'strip': { clock: 0.7, action: 0.7, timer: 0.7 },
+  'second-monitor': { clock: 1.2, action: 1.15, timer: 1.15 }
+};
+var KIND_PRIORITY = { death: 3, objective: 2, coach: 1 };
+var KIND_TTL_MS = { death: 60000, objective: 90000, coach: 90000 };
+var DEFAULT_TTL_MS = 90000;
+var TEXT_MAX = 400;
+var STRICT_TEXT_MAX = 120;
+var TAG_RE = /\b[\w\u00c0-\u024f]{2,24}#[A-Za-z0-9]{2,8}\b/g;
+var HASH_RE = /#[A-Za-z0-9]{2,8}\b/g;
+var CONTROL_RE = /[\u0000-\u001f\u007f]+/g;
 var MOJIBAKE = [
   [/\u00d4\u00c7\u00f6/g, '\u2014'],
   [/\u00d4\u00c7\u00f4/g, '\u2013'],
@@ -135,21 +265,47 @@ var params = null;
 try { params = new URLSearchParams((typeof location !== 'undefined' && location.search) || ''); } catch (e) { params = null; }
 function qp(name){ try { return params ? params.get(name) : null; } catch (e) { return null; } }
 
+function parsePreset(v){
+  var s = String(v == null ? '' : v).trim().toLowerCase();
+  if (!s) return 'default';
+  if (s === 'secondmonitor' || s === 'second_monitor' || s === '2nd-monitor') return 'second-monitor';
+  return PRESETS.indexOf(s) >= 0 ? s : 'default';
+}
+function parseScale(v, fallback){
+  var n = num(v);
+  if (n == null) return fallback;
+  return clamp(n, 0.4, 4);
+}
+
 var bgParam = String(qp('bg') || 'dark').toLowerCase();
 var bgMode = BG_MODES.indexOf(bgParam) >= 0 ? bgParam : 'dark';
 var chromaParam = String(qp('chroma') || '');
 var chromaHex = /^[0-9a-fA-F]{6}$/.test(chromaParam) ? chromaParam : '00B140';
-var scaleParam = clamp(num(qp('scale')) == null ? 1 : num(qp('scale')), 0.6, 3);
+var presetName = parsePreset(qp('preset'));
+var presetDefaults = PRESET_DEFAULTS[presetName] || PRESET_DEFAULTS['default'];
+var scaleParam = parseScale(qp('scale'), 1);
+var clockScaleParam = parseScale(qp('clockScale'), scaleParam * presetDefaults.clock);
+var actionScaleParam = parseScale(qp('actionScale'), scaleParam * presetDefaults.action);
+var timerScaleParam = parseScale(qp('timerScale'), scaleParam * presetDefaults.timer);
 var pollParam = clamp(num(qp('poll')) == null ? 2000 : Math.floor(num(qp('poll'))), 1000, 15000);
+var privacyParam = String(qp('privacy') || '').toLowerCase();
+var privacyStrict = privacyParam === 'strict';
 
-var src = { game: 'pending', coach: 'pending', death: 'pending', timeline: 'pending' };
+var src = { game: 'pending', coach: 'pending', death: 'pending', timeline: 'pending', action: 'pending' };
 var gameStatus = 'connecting';
 var inGame = false;
+var gameSession = null;
 var anchor = { t: 0, at: 0 };
 var lastGoodAt = 0;
 var dragonNext = null, baronNext = null;
-var lastCoach = null;
-var deathDoNow = null;
+
+var coachState = null;
+var deathState = null;
+var actionState = null;
+var refreshCount = 0;
+var renderedActionKey = '';
+var renderedDeathKey = '';
+var pollBusy = {};
 
 function hardFailure(){ return gameStatus === 'offline' || gameStatus === 'api_error' || gameStatus === 'malformed'; }
 
@@ -165,6 +321,35 @@ function clockNow(){
   return anchor.t + (performance.now() - anchor.at) / 1000;
 }
 
+function sessionMatches(sid){
+  var s = sid == null || sid === '' ? null : String(sid);
+  if (s == null) return true;
+  if (gameSession == null) return true;
+  return s === String(gameSession);
+}
+
+function ageAt(baseAge, fetchedAt, now){
+  var a = num(baseAge);
+  if (a == null || a < 0) a = 0;
+  return a + Math.max(0, (now - fetchedAt) / 1000);
+}
+
+function epochMs(v){
+  if (v == null) return null;
+  var n = num(v);
+  if (n != null) return n >= 1e12 ? n : n * 1000;
+  var d = Date.parse(String(v));
+  return isFinite(d) ? d : null;
+}
+
+function privacyText(s, strict){
+  var x = tidy(String(s == null ? '' : s)).replace(CONTROL_RE, ' ');
+  x = x.replace(/\s+/g, ' ').trim();
+  var max = strict ? STRICT_TEXT_MAX : TEXT_MAX;
+  if (strict) x = x.replace(TAG_RE, '[name]').replace(HASH_RE, '[tag]');
+  if (x.length > max) x = x.slice(0, Math.max(0, max - 1)).replace(/\s+\S*$/, '') + '\u2026';
+  return x;
+}
 function connInfo(){
   if (src.game === 'offline') return { cls: 'dead', text: 'server offline' };
   if (src.game === 'missing') return { cls: 'warn', text: 'game api missing' };
@@ -229,23 +414,26 @@ function timerText(at, t){
   return fmt(left);
 }
 
+function renderTimerPair(el, valEl, stateEl, next, t, stale){
+  var valid = inGame && next != null && t != null;
+  var left = valid ? next - t : null;
+  if (valEl) valEl.textContent = valid ? timerText(next, t) : '--:--';
+  var up = !stale && left != null && left <= 0;
+  var soon = !stale && left != null && left > 0 && left <= 60;
+  if (el) {
+    el.classList.toggle('up', up);
+    el.classList.toggle('soon', soon);
+    el.classList.toggle('stale', !!(valid && stale));
+  }
+  if (stateEl) stateEl.textContent = !valid ? '' : (stale ? 'STALE' : (up ? 'UP' : (soon ? 'SOON' : '')));
+}
+
 function renderTimers(t){
-  var dEl = document.getElementById('objDragon');
-  var dVal = document.getElementById('dragonVal');
-  if (dVal) dVal.textContent = num(t) == null ? '--:--' : timerText(dragonNext, t);
-  if (dEl) {
-    var dLeft = num(t) == null ? null : dragonNext - t;
-    dEl.classList.toggle('up', dLeft != null && dLeft <= 0);
-    dEl.classList.toggle('soon', dLeft != null && dLeft > 0 && dLeft <= 60);
-  }
-  var bEl = document.getElementById('objBaron');
-  var bVal = document.getElementById('baronVal');
-  if (bVal) bVal.textContent = num(t) == null ? '--:--' : timerText(baronNext, t);
-  if (bEl) {
-    var bLeft = num(t) == null ? null : baronNext - t;
-    bEl.classList.toggle('up', bLeft != null && bLeft <= 0);
-    bEl.classList.toggle('soon', bLeft != null && bLeft > 0 && bLeft <= 60);
-  }
+  var stale = inGame && isStale();
+  renderTimerPair(document.getElementById('objDragon'), document.getElementById('dragonVal'),
+    document.getElementById('dragonState'), dragonNext, t, stale);
+  renderTimerPair(document.getElementById('objBaron'), document.getElementById('baronVal'),
+    document.getElementById('baronState'), baronNext, t, stale);
 }
 
 function tick(){
@@ -257,31 +445,108 @@ function tick(){
   }
   renderTimers(t);
   paintConn();
+  refreshAction();
+  renderDeath();
 }
 
 function coachDoNow(text){
   var lines = String(text == null ? '' : text).split(/\r?\n/);
   for (var i = 0; i < lines.length; i++) {
     var m = tidy(lines[i]).trim().match(/^DO NOW\s*:\s*(.*)$/i);
-    if (m && m[1].trim()) return m[1].trim().slice(0, 400);
+    if (m && m[1].trim()) return m[1].trim();
   }
   return null;
 }
 
-function refreshDoNow(){
-  var el = document.getElementById('donow');
-  var txt = document.getElementById('donowText');
-  if (!el || !txt) return;
-  var text = lastCoach ? coachDoNow(lastCoach.text) : null;
-  if (!text) text = deathDoNow;
-  if (!text || !inGame) { el.style.display = 'none'; return; }
-  txt.innerHTML = esc(text);
-  el.style.display = 'flex';
+function localCoachCandidate(now){
+  var c = coachState;
+  if (!c || !inGame) return null;
+  if (c.status !== 'ok' && c.status !== 'unstable') return null;
+  var age = ageAt(c.age, c.fetchedAt, now);
+  if (age > KIND_TTL_MS.coach / 1000) return null;
+  if (!sessionMatches(c.sessionId)) return null;
+  var text = privacyText(coachDoNow(c.text), privacyStrict);
+  if (!text) return null;
+  return { text: text, priority: KIND_PRIORITY.coach, kind: 'coach', source: 'coach', age: age };
 }
 
+function localDeathCandidate(now){
+  var d = deathState;
+  if (!d || !inGame) return null;
+  if (d.status !== 'ok' && d.status !== 'unstable') return null;
+  var age = ageAt(d.age, d.fetchedAt, now);
+  if (age > KIND_TTL_MS.death / 1000) return null;
+  if (!sessionMatches(d.sessionId)) return null;
+  var text = privacyText(d.doNow, privacyStrict);
+  if (!text) return null;
+  return { text: text, priority: KIND_PRIORITY.death, kind: 'death', source: 'death', age: age };
+}
+
+function apiCandidate(now){
+  var st = actionState;
+  if (!st || !isObj(st.action)) return null;
+  if (!inGame) return null;
+  var a = st.action;
+  var kind = typeof a.kind === 'string' && a.kind ? a.kind.toLowerCase() : 'coach';
+  var priority = num(a.priority);
+  if (priority == null) priority = KIND_PRIORITY[kind] == null ? 1 : KIND_PRIORITY[kind];
+  priority = clamp(Math.round(priority), 1, 3);
+  var ttl = KIND_TTL_MS[kind] == null ? DEFAULT_TTL_MS : KIND_TTL_MS[kind];
+  var base = num(a.ageSec);
+  if (base == null) {
+    var obs = epochMs(a.observedAt);
+    base = obs == null ? 0 : Math.max(0, (Date.now() - obs) / 1000);
+  }
+  var age = ageAt(base, st.fetchedAt, now);
+  var exp = epochMs(a.expiresAt);
+  if (exp != null && Date.now() > exp) return null;
+  if (age > ttl / 1000) return null;
+  if (!sessionMatches(a.sessionId)) return null;
+  var text = privacyText(a.text, privacyStrict);
+  if (!text) return null;
+  return { text: text, priority: priority, kind: kind, source: typeof a.source === 'string' && a.source ? a.source : kind, age: age };
+}
+
+function localHighest(now){
+  var d = localDeathCandidate(now);
+  var c = localCoachCandidate(now);
+  if (d && c) return d.priority >= c.priority ? d : c;
+  return d || c;
+}
+
+function pickAction(now){
+  var api = apiCandidate(now);
+  if (actionState) return api;
+  return api || localHighest(now);
+}
+
+function refreshAction(){
+  var el = document.getElementById('donow');
+  var txt = document.getElementById('donowText');
+  var a = null;
+  try { a = pickAction(performance.now()); } catch (e) { a = null; }
+  var key = a ? (a.priority + '|' + a.kind + '|' + a.text) : '';
+  if (key === renderedActionKey) return;
+  renderedActionKey = key;
+  if (!el || !txt) return;
+  if (!a) { el.style.display = 'none'; txt.textContent = ''; return; }
+  txt.innerHTML = esc(a.text);
+  el.style.display = 'flex';
+}
 function applyCoach(j){
-  lastCoach = isObj(j) ? j : null;
-  refreshDoNow();
+  if (!isObj(j)) {
+    coachState = null;
+    refreshAction();
+    return;
+  }
+  coachState = {
+    text: typeof j.text === 'string' ? j.text : '',
+    status: typeof j.status === 'string' ? j.status : 'ok',
+    age: num(j.age),
+    sessionId: j.sessionId == null ? null : String(j.sessionId),
+    fetchedAt: performance.now()
+  };
+  refreshAction();
 }
 
 function clockToken(v){
@@ -322,52 +587,138 @@ function deathDoNowText(j){
   var st = isObj(j.structured) ? j.structured : null;
   if (!st) return null;
   var d = typeof st.doNow === 'string' ? st.doNow.trim() : '';
-  return d ? d.slice(0, 400) : null;
+  return d ? d : null;
+}
+
+function deathCandidate(now){
+  var d = deathState;
+  if (!d || !inGame) return null;
+  if (d.status !== 'ok' && d.status !== 'unstable') return null;
+  if (!d.headline) return null;
+  var age = ageAt(d.age, d.fetchedAt, now);
+  if (age > KIND_TTL_MS.death / 1000) return null;
+  if (!sessionMatches(d.sessionId)) return null;
+  return { headline: d.headline, age: age };
+}
+
+function renderDeath(){
+  var el = document.getElementById('death');
+  var txt = document.getElementById('deathText');
+  var c = null;
+  try { c = deathCandidate(performance.now()); } catch (e) { c = null; }
+  var key = c ? c.headline : '';
+  if (key === renderedDeathKey) return;
+  renderedDeathKey = key;
+  if (!el || !txt) return;
+  if (!c) { el.style.display = 'none'; txt.textContent = ''; return; }
+  txt.innerHTML = esc(c.headline);
+  el.style.display = 'flex';
 }
 
 function applyDeath(j){
-  var el = document.getElementById('death');
-  var txt = document.getElementById('deathText');
-  deathDoNow = null;
-  var headline = null;
-  if (isObj(j)) {
-    var age = num(j.age);
-    var status = typeof j.status === 'string' ? j.status : 'ok';
-    var hasText = typeof j.text === 'string' && j.text.trim();
-    if ((status === 'ok' || status === 'unstable') && age != null && age >= 0 && age <= 60 && hasText) {
-      headline = deathHeadline(j);
-      deathDoNow = deathDoNowText(j);
-    }
+  if (!isObj(j)) {
+    deathState = null;
+    renderDeath();
+    refreshAction();
+    return;
   }
-  if (el && txt) {
-    if (!headline) { el.style.display = 'none'; }
-    else { txt.innerHTML = esc(headline); el.style.display = 'flex'; }
-  }
-  refreshDoNow();
+  var status = typeof j.status === 'string' ? j.status : 'ok';
+  var text = typeof j.text === 'string' ? j.text : '';
+  var usable = (status === 'ok' || status === 'unstable') && !!text.trim();
+  deathState = {
+    headline: usable ? deathHeadline(j) : null,
+    doNow: usable ? deathDoNowText(j) : null,
+    status: status,
+    age: num(j.age),
+    sessionId: j.sessionId == null ? null : String(j.sessionId),
+    fetchedAt: performance.now()
+  };
+  renderDeath();
+  refreshAction();
 }
 
+function applyAction(j){
+  if (!isObj(j) || j.ok === false) {
+    actionState = null;
+    src.action = 'error';
+    refreshAction();
+    return;
+  }
+  var a = isObj(j.action) ? j.action : null;
+  actionState = {
+    action: a ? {
+      kind: typeof a.kind === 'string' ? a.kind : '',
+      text: typeof a.text === 'string' ? a.text : '',
+      priority: a.priority == null ? null : num(a.priority),
+      sessionId: a.sessionId == null ? null : String(a.sessionId),
+      observedAt: a.observedAt,
+      ageSec: num(a.ageSec),
+      expiresAt: a.expiresAt,
+      source: typeof a.source === 'string' ? a.source : ''
+    } : null,
+    fetchedAt: performance.now()
+  };
+  src.action = 'ok';
+  refreshAction();
+}
+
+function clearTransient(){
+  coachState = null;
+  deathState = null;
+  actionState = null;
+  renderedActionKey = '';
+  renderedDeathKey = '';
+  var d = document.getElementById('donow');
+  if (d) d.style.display = 'none';
+  var dd = document.getElementById('death');
+  if (dd) dd.style.display = 'none';
+}
 function applyGame(j){
-  if (!isObj(j)) { src.game = 'error'; gameStatus = 'malformed'; inGame = false; tick(); return; }
+  if (!isObj(j)) {
+    src.game = 'error';
+    gameStatus = 'malformed';
+    if (inGame) { inGame = false; gameSession = null; clearTransient(); }
+    tick();
+    return;
+  }
   src.game = 'ok';
   var st = typeof j.status === 'string' ? j.status : (j.inGame ? 'live' : 'no_game');
   var t = num(j.time);
   if (st === 'live' && j.inGame && t != null) {
+    var wasInGame = inGame;
+    var nextSession = j.sessionId == null || j.sessionId === '' ? gameSession : String(j.sessionId);
+    var sessionChanged = wasInGame && gameSession != null && nextSession != null && String(nextSession) !== String(gameSession);
     gameStatus = 'live';
     inGame = true;
+    gameSession = nextSession;
     anchor = { t: t, at: performance.now() };
     lastGoodAt = performance.now();
     var o = objectives(j);
     dragonNext = o.dragonNext;
     baronNext = o.baronNext;
+    if (!wasInGame || sessionChanged) {
+      if (sessionChanged) clearTransient();
+      refreshCount++;
+      triggerImmediateRefresh();
+    }
   } else {
+    var wasLive = inGame;
     gameStatus = st || 'no_game';
     inGame = false;
+    gameSession = null;
     anchor = { t: 0, at: performance.now() };
     lastGoodAt = 0;
     dragonNext = null;
     baronNext = null;
+    if (wasLive) {
+      clearTransient();
+      refreshCount++;
+      triggerImmediateRefresh();
+    }
   }
   tick();
+  refreshAction();
+  renderDeath();
 }
 
 async function getJson(url, timeoutMs){
@@ -381,6 +732,11 @@ async function getJson(url, timeoutMs){
   } finally {
     if (to) clearTimeout(to);
   }
+}
+
+function srcStatus(j){
+  var st = typeof j.status === 'string' ? j.status : 'ok';
+  return st === 'error' ? 'error' : (st === 'missing' ? 'missing' : (st === 'unstable' ? 'unstable' : 'ok'));
 }
 
 async function pollGame(){
@@ -401,8 +757,7 @@ async function pollCoach(){
     var r = await getJson('/api/coach', 6000);
     if (r.status === 404) { src.coach = 'missing'; applyCoach(null); return; }
     if (r.bad || !isObj(r.json)) { src.coach = 'error'; applyCoach(null); return; }
-    var st = typeof r.json.status === 'string' ? r.json.status : 'ok';
-    src.coach = st === 'error' ? 'error' : (st === 'missing' ? 'missing' : (st === 'unstable' ? 'unstable' : 'ok'));
+    src.coach = srcStatus(r.json);
     applyCoach(r.json);
   } catch (e) {
     src.coach = 'offline';
@@ -415,12 +770,25 @@ async function pollDeath(){
     var r = await getJson('/api/death', 6000);
     if (r.status === 404) { src.death = 'missing'; applyDeath(null); return; }
     if (r.bad || !isObj(r.json)) { src.death = 'error'; applyDeath(null); return; }
-    var st = typeof r.json.status === 'string' ? r.json.status : 'ok';
-    src.death = st === 'error' ? 'error' : (st === 'missing' ? 'missing' : (st === 'unstable' ? 'unstable' : 'ok'));
+    src.death = srcStatus(r.json);
     applyDeath(r.json);
   } catch (e) {
     src.death = 'offline';
     applyDeath(null);
+  }
+}
+
+async function pollAction(){
+  try {
+    var r = await getJson('/api/action', 6000);
+    if (r.status === 404) { src.action = 'missing'; actionState = null; refreshAction(); return; }
+    if (r.bad || !isObj(r.json) || r.json.ok === false) { src.action = 'error'; actionState = null; refreshAction(); return; }
+    applyAction(r.json);
+    src.action = 'ok';
+  } catch (e) {
+    src.action = 'offline';
+    actionState = null;
+    refreshAction();
   }
 }
 
@@ -435,6 +803,27 @@ async function pollTimeline(){
   }
 }
 
+function guarded(fn){
+  return async function(){
+    var name = fn.name || 'poll';
+    if (pollBusy[name]) return;
+    pollBusy[name] = true;
+    try { await fn(); } catch (e) {} finally { pollBusy[name] = false; }
+  };
+}
+
+var pollGameGuarded = guarded(pollGame);
+var pollCoachGuarded = guarded(pollCoach);
+var pollDeathGuarded = guarded(pollDeath);
+var pollActionGuarded = guarded(pollAction);
+var pollTimelineGuarded = guarded(pollTimeline);
+
+function triggerImmediateRefresh(){
+  pollActionGuarded();
+  pollCoachGuarded();
+  pollDeathGuarded();
+}
+
 function scheduleLoop(fn, ms){
   async function step(){
     try { await fn(); } catch (e) {}
@@ -446,9 +835,12 @@ function scheduleLoop(fn, ms){
 function applyConfig(){
   var body = document.body;
   if (!body) return;
-  body.className = 'bg-' + bgMode;
+  body.className = 'bg-' + bgMode + ' preset-' + presetName + (privacyStrict ? ' privacy-strict' : '');
   try {
     body.style.setProperty('--scale', String(scaleParam));
+    body.style.setProperty('--clock-scale', String(clockScaleParam));
+    body.style.setProperty('--action-scale', String(actionScaleParam));
+    body.style.setProperty('--timer-scale', String(timerScaleParam));
     if (bgMode === 'chroma') body.style.setProperty('--chroma', '#' + chromaHex);
   } catch (e) {}
 }
@@ -456,15 +848,16 @@ function applyConfig(){
 function init(){
   applyConfig();
   tick();
-  scheduleLoop(pollGame, pollParam);
-  scheduleLoop(pollCoach, pollParam);
-  scheduleLoop(pollDeath, pollParam);
-  scheduleLoop(pollTimeline, Math.max(pollParam, 5000));
+  scheduleLoop(pollGameGuarded, pollParam);
+  scheduleLoop(pollCoachGuarded, pollParam);
+  scheduleLoop(pollDeathGuarded, pollParam);
+  scheduleLoop(pollActionGuarded, pollParam);
+  scheduleLoop(pollTimelineGuarded, Math.max(pollParam, 5000));
   setInterval(tick, 250);
 }
 
 var testApi = {
-  tidy: tidy, esc: esc, num: num, fmt: fmt,
+  tidy: tidy, esc: esc, num: num, fmt: fmt, clamp: clamp,
   coachDoNow: coachDoNow,
   deathHeadline: deathHeadline,
   deathDoNowText: deathDoNowText,
@@ -472,11 +865,25 @@ var testApi = {
   applyGame: applyGame,
   applyCoach: applyCoach,
   applyDeath: applyDeath,
+  applyAction: applyAction,
+  parsePreset: parsePreset,
+  privacyText: privacyText,
+  sessionMatches: sessionMatches,
+  pickAction: pickAction,
+  tick: tick,
+  refreshAction: refreshAction,
+  renderDeath: renderDeath,
   connInfo: connInfo,
   src: src,
   get inGame(){ return inGame; },
   get gameStatus(){ return gameStatus; },
-  config: { bg: bgMode, chroma: chromaHex, scale: scaleParam, poll: pollParam }
+  get gameSession(){ return gameSession; },
+  get refreshCount(){ return refreshCount; },
+  config: {
+    bg: bgMode, chroma: chromaHex, scale: scaleParam, poll: pollParam,
+    preset: presetName, privacy: privacyStrict ? 'strict' : 'normal',
+    clockScale: clockScaleParam, actionScale: actionScaleParam, timerScale: timerScaleParam
+  }
 };
 if (typeof window !== 'undefined') window.__riftOverlay = testApi;
 if (typeof document !== 'undefined' && document.getElementById) init();

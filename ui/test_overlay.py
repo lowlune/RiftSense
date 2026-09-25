@@ -2,8 +2,10 @@
 
 The inline scripts of ui/index.html and ui/overlay.html must parse under
 ``node --check``. A small DOM-stub harness (test_overlay_harness.js) drives
-the overlay render helpers and checks escaping, numeric validation, privacy
-and graceful degradation. Everything is skipped when node is unavailable.
+the overlay render helpers and checks action priority/TTL selection, stale
+clock handling, preset parsing, privacy stripping, escaping, numeric
+validation and graceful degradation. Everything is skipped when node is
+unavailable.
 """
 
 import os
@@ -51,6 +53,54 @@ class OverlayMarkupTest(unittest.TestCase):
         self.assertIn('params.get', self.html)
         self.assertIn('bg-transparent', self.lower)
         self.assertIn('scale', self.lower)
+
+    def test_consumes_action_endpoint(self):
+        self.assertIn('/api/action', self.html)
+        self.assertIn('applyAction', self.html)
+        self.assertIn('actionState', self.html)
+
+    def test_action_priority_and_ttl_rules(self):
+        self.assertIn('KIND_PRIORITY', self.html)
+        self.assertIn('KIND_TTL_MS', self.html)
+        self.assertRegex(self.html, r"death:\s*3,\s*objective:\s*2,\s*coach:\s*1")
+        self.assertRegex(self.html, r"death:\s*60000,\s*objective:\s*90000,\s*coach:\s*90000")
+
+    def test_session_and_refresh_transitions(self):
+        self.assertIn('sessionMatches', self.html)
+        self.assertIn('clearTransient', self.html)
+        self.assertIn('triggerImmediateRefresh', self.html)
+
+    def test_presets_and_independent_scales(self):
+        self.assertIn('preset=', self.lower)
+        for name in ('corner', 'strip', 'second-monitor'):
+            self.assertIn(name, self.lower)
+        for marker in ('--clock-scale', '--action-scale', '--timer-scale',
+                       'clockScale', 'actionScale', 'timerScale'):
+            self.assertIn(marker, self.html)
+
+    def test_responsive_overflow_fallback(self):
+        self.assertIn('overflow: auto', self.html)
+        self.assertIn('overscroll-behavior', self.html)
+        self.assertIn('@media', self.html)
+
+    def test_privacy_strict_mode(self):
+        self.assertIn('privacy', self.lower)
+        self.assertIn('strict', self.lower)
+        self.assertIn('TAG_RE', self.html)
+        self.assertIn('STRICT_TEXT_MAX', self.html)
+
+    def test_objective_state_text_not_color_only(self):
+        self.assertIn('id="dragonState"', self.html)
+        self.assertIn('id="baronState"', self.html)
+        self.assertIn("'SOON'", self.html)
+        self.assertIn("'STALE'", self.html)
+
+    def test_a11y_semantics(self):
+        self.assertIn('role="status"', self.html)
+        self.assertIn('aria-live="polite"', self.html)
+        self.assertIn('<h1', self.lower)
+        self.assertIn('<h2', self.lower)
+        self.assertIn('aria-label', self.lower)
 
     def test_server_routes_overlay(self):
         with open(SERVER, 'r', encoding='utf-8') as f:
