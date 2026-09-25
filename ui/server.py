@@ -26,13 +26,14 @@ try:
 except ImportError:
     msvcrt = None
 if __package__:  # package context: keep one module identity (ui.*)
-    from . import packs, purchase, review, timeline, trends
+    from . import packs, purchase, review, timeline, trends, updater
 else:  # direct script (python3 ui/server.py)
     import packs
     import purchase
     import review
     import timeline
     import trends
+    import updater
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(BASE)
@@ -89,6 +90,7 @@ PLAN_RE = re.compile(r'^PLAN\[([^\[\]\r\n]{1,64})\]\s*:\s*(.+)$')
 PLAN_LEGACY_RE = re.compile(r'^PLAN\s*:\s*(.+)$', re.IGNORECASE)
 PLAN_CONTROL_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f]')
 _PLAN_WRITE_LOCK = threading.Lock()
+_UPDATE_LOCK = threading.Lock()
 
 SSL_CTX = ssl.create_default_context()
 SSL_CTX.check_hostname = False
@@ -379,6 +381,7 @@ def refresh_asset_state():
 
 def version_info():
     return {
+        'app': updater.app_version(),
         'version': ASSETS.get('version'),
         'championVersion': ASSETS.get('championVersion'),
         'itemVersion': ASSETS.get('itemVersion'),
@@ -479,6 +482,7 @@ def build_health():
         'ok': not problems,
         'status': 'ok' if not problems else 'degraded',
         'problems': problems,
+        'app': updater.app_version(),
         'version': ASSETS.get('version'),
         'assetVersion': ASSETS.get('version'),
         'championVersion': ASSETS.get('championVersion'),
@@ -1965,6 +1969,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send(version_info())
         elif path == '/api/health':
             self._send(build_health())
+        elif path == '/api/update':
+            self._send(updater.state())
+        elif path == '/api/update/log':
+            limit = 80
+            if '?' in self.path:
+                query = urllib.parse.parse_qs(self.path.split('?', 1)[1])
+                try:
+                    limit = int((query.get('limit') or ['80'])[0])
+                except (TypeError, ValueError):
+                    limit = 80
+            lines = updater.log_tail(limit)
+            self._send({'ok': True, 'lines': lines, 'count': len(lines),
+                        'logPath': updater.LOG_FILE})
         elif path == '/api/game':
             state = build_state()
             self._send(state, code=503 if state.get('status') == 'api_error' else 200)
@@ -2065,15 +2082,59 @@ class Handler(http.server.BaseHTTPRequestHandler):
             raise ValueError('body must be a JSON object')
         return payload
 
+    def _read_optional_json_body(self, limit):
+        length = int(self.headers.get('Content-Length') or 0)
+        if length <= 0:
+            return {}
+        return self._read_json_body(limit)
+
+    def _post_update(self, path):
+        if path in ('/api/update/download', '/api/update/apply'):
+            try:
+                game = build_state()
+            except Exception:
+                game = {}
+            if isinstance(game, dict) and game.get('status') == 'live':
+                self._send({'ok': False, 'error': 'in_game'}, code=409)
+                return
+        if not _UPDATE_LOCK.acquire(blocking=False):
+            self._send({'ok': False, 'error': 'busy'}, code=409)
+            return
+        try:
+            payload = self._read_optional_json_body(65536)
+            if path == '/api/update/check':
+                channel = payload.get('channel') or 'stable'
+                force = payload.get('force', True)
+                self._send(updater.check(force=bool(force), channel=channel))
+            elif path == '/api/update/download':
+                channel = payload.get('channel') or 'stable'
+                version = payload.get('version')
+                self._send(updater.download(version=version, channel=channel))
+            else:
+                staged = payload.get('staged_path') or payload.get('path')
+                self._send(updater.apply(staged_path=staged))
+        except ValueError as ex:
+            self._send({'ok': False, 'error': 'invalid_body',
+                        'message': str(ex)}, code=400)
+        except Exception as ex:
+            self._send({'ok': False, 'error': 'update_error',
+                        'message': str(ex)}, code=500)
+        finally:
+            _UPDATE_LOCK.release()
+
     def do_POST(self):
         path = self.path.split('?', 1)[0].rstrip('/')
-        if path not in ('/api/plan/edit', '/api/events'):
+        if path not in ('/api/plan/edit', '/api/events', '/api/update/check',
+                        '/api/update/download', '/api/update/apply'):
             self._send({'ok': False, 'error': 'not_found'}, code=404)
             return
         denial = check_write_request(self.headers)
         if denial:
             self._send({'ok': False, 'error': denial['error'],
                         'message': denial['message']}, code=denial['code'])
+            return
+        if path.startswith('/api/update/'):
+            self._post_update(path)
             return
         if path == '/api/plan/edit':
             try:
