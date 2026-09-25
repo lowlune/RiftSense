@@ -37,8 +37,10 @@
   ::-webkit-scrollbar-thumb { background: rgba(200,170,110,.22); border-radius: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
 
-  .topbar { flex: 0 0 auto; display: flex; align-items: center; gap: 15px; padding: 1px 6px 6px; border-bottom: 1px solid rgba(255,255,255,.07); }
+  .topbar { flex: 0 0 auto; display: flex; align-items: center; flex-wrap: wrap; row-gap: 4px; gap: 15px; padding: 1px 6px 6px; border-bottom: 1px solid rgba(255,255,255,.07); }
+  .topbar > * { min-width: 0; }
   #clock { font: 700 20px/1 "Cascadia Mono", Consolas, monospace; color: #fff; text-shadow: 0 0 14px rgba(77,157,224,.35); }
+  #clock.stale { color: var(--amber); text-shadow: none; }
   .livepill { display: flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700; letter-spacing: .14em; color: var(--dim); text-transform: uppercase; }
   .livepill .st-live { color: var(--green); animation: pulse 2s infinite; }
   .livepill .st-wait { color: var(--amber); }
@@ -51,20 +53,28 @@
   .obj.soon .val, .obj.soon i { color: var(--amber); animation: pulse 1.4s infinite; }
   .obj.gold i { color: var(--gold); }
   .tspacer { flex: 1 1 auto; }
-  #summoner { font-size: 12px; color: var(--text); }
+  #summoner { font-size: 12px; color: var(--text); max-width: 32vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .hcost { display: flex; align-items: baseline; gap: 6px; }
   .hcost .amount { font: 700 14.5px/1 "Cascadia Mono", Consolas, monospace; color: var(--gold); }
   .hcost .sub { font-size: 9.5px; color: var(--dim); }
+  .audiostate { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
+  .audiostate.on { color: var(--green); }
+  .audiostate.blocked { color: var(--amber); }
+  .audiostate.tap { color: var(--dim); }
+  .audiostate.off { color: var(--faint); }
+  .diag { display: none; font-size: 9.5px; color: var(--amber); white-space: nowrap; }
+  .diag.show { display: inline; }
   .mutebtn { background: transparent; border: 1px solid rgba(255,255,255,.08); color: var(--dim); border-radius: 7px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 13px; }
   .mutebtn:hover { color: var(--gold); border-color: var(--line); }
   .mutebtn.off { color: var(--faint); }
   @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }
 
-  .buildstrip { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 0 6px; }
+  .buildstrip { flex: 0 0 auto; display: flex; align-items: center; flex-wrap: wrap; row-gap: 4px; gap: 10px; padding: 0 6px; }
   .buildstrip .blabel { display: flex; align-items: center; gap: 5px; font-size: 9px; font-weight: 700; letter-spacing: .2em; color: var(--gold-dim); }
   .buildstrip .blabel i { font-size: 12px; }
-  .bitems { display: flex; align-items: center; gap: 4px; overflow: hidden; }
-  .bitem { position: relative; }
+  .berr { font-size: 9.5px; color: var(--red); }
+  .bitems { display: flex; align-items: center; gap: 4px; overflow-x: auto; overflow-y: hidden; min-width: 0; flex: 1 1 auto; }
+  .bitem { position: relative; flex: 0 0 auto; }
   .bitem img { width: 23px; height: 23px; border-radius: 5px; border: 1px solid rgba(255,255,255,.10); background: #0a1220; display: block; }
   .bitem.owned img { opacity: .45; }
   .bitem.next img { border-color: var(--gold); box-shadow: 0 0 8px rgba(200,170,110,.4); }
@@ -98,8 +108,8 @@
   .ptitle { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; font-size: 10px; font-weight: 700; letter-spacing: .22em; color: var(--gold); text-transform: uppercase; }
   .ptitle i { font-size: 14px; }
   .ptitle .age { margin-left: auto; color: var(--dim); letter-spacing: .04em; text-transform: none; font-weight: 400; font-size: 10px; }
-  .pane.blue .ptitle { color: var(--blue); }
-  .pane.red .ptitle { color: var(--red); }
+  .ptitle.blue, .pane.blue .ptitle { color: var(--blue); }
+  .ptitle.red, .pane.red .ptitle { color: var(--red); }
 
   #coach { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-top: 7px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 22px; align-content: start; }
   .chead { grid-column: 1 / -1; color: #B9C2D0; font-size: 12.5px; padding-bottom: 5px; border-bottom: 1px dashed rgba(255,255,255,.08); margin-bottom: 2px; }
@@ -176,8 +186,15 @@
   }
 
   @media (max-width: 720px) {
+    html, body { height: auto; min-height: 100%; }
+    body { overflow-y: auto; }
+    .shell { height: auto; min-height: 100vh; }
+    .slab { min-height: 70vh; }
+    .topbar { gap: 10px; }
+    #summoner { max-width: 45vw; }
     .teams { grid-template-columns: 1fr; }
     .tcol.enemy { border-left: none; border-top: 1px solid rgba(255,255,255,.06); }
+    .eventsline { white-space: normal; flex-wrap: wrap; overflow: visible; mask-image: none; -webkit-mask-image: none; }
   }
 </style>
 </head>
@@ -191,13 +208,16 @@
     <div class="obj gold" id="objPhase"><i class="ph-fill ph-clock"></i><span class="val" id="phaseVal">—</span></div>
     <div class="tspacer"></div>
     <div id="summoner">—</div>
-    <div class="hcost"><span class="amount" id="costTotal">$0.0000</span><span class="sub" id="costSub">—</span></div>
+    <span class="diag" id="diag"></span>
+    <div class="hcost"><span class="amount" id="costTotal">$—</span><span class="sub" id="costSub">—</span></div>
+    <span class="audiostate off" id="audioState">audio off</span>
     <button class="mutebtn" id="muteBtn" title="toggle sound"><i class="ph-fill ph-speaker-high" id="muteIcon"></i></button>
   </div>
 
   <div class="buildstrip" id="buildStrip" style="display:none">
     <span class="blabel"><i class="ph-fill ph-hammer"></i>BUILD</span>
     <div class="bitems" id="buildItems"></div>
+    <span class="berr" id="buildErr"></span>
   </div>
 
   <div class="slab">
@@ -213,14 +233,14 @@
     </div>
     <div class="vdiv"></div>
     <div class="pane" style="padding:0">
-      <div class="idlemsg" id="idleMsg">Not in a game yet - <b>queue up</b> and this board comes alive.</div>
+      <div class="idlemsg" id="idleMsg">Not in a game yet — queue up and this board comes alive.</div>
       <div class="teams">
         <div class="tcol">
-          <div class="ptitle blue"><i class="ph-fill ph-shield"></i>Your team</div>
+          <div class="ptitle blue" id="teamTitle1"><i class="ph-fill ph-shield"></i>Your team</div>
           <div class="tlist" id="team1"></div>
         </div>
         <div class="tcol enemy">
-          <div class="ptitle red"><i class="ph-fill ph-sword"></i>Enemy team</div>
+          <div class="ptitle red" id="teamTitle2"><i class="ph-fill ph-sword"></i>Enemy team</div>
           <div class="tlist" id="team2"></div>
         </div>
       </div>
@@ -230,7 +250,8 @@
 </div>
 
 <script>
-const CDN = 'https://ddragon.leagueoflegends.com/cdn/16.18.1';
+const FALLBACK_CDN_VERSION = '16.19.1';
+const FRESH_WINDOW_MS = 6000;
 const SPELL_ICONS = { Flash:'SummonerFlash', Ignite:'SummonerDot', Teleport:'SummonerTeleport', Smite:'SummonerSmite',
   Ghost:'SummonerHaste', Heal:'SummonerHeal', Exhaust:'SummonerExhaust', Barrier:'SummonerBarrier',
   Cleanse:'SummonerBoost', Snowball:'SummonerSnowball', Clarity:'SummonerMana' };
@@ -256,19 +277,60 @@ const MOJIBAKE = [
   [/\u00d4\u00c7\u0153/g, '\u201d']
 ];
 
-let state = { inGame: false };
+let cdnVersion = FALLBACK_CDN_VERSION;
+let versionResolved = false;
+let state = { inGame: false, status: 'connecting' };
 let anchor = { t: 0, at: performance.now() };
+let lastGoodAt = 0;
+let gameSeq = 0;
+let gameBusy = false;
+let currentSession = null;
 let lastPlanItems = [];
 let hlItems = [];
 let KEYWORD_RE = null;
 let KEYWORD_MAP = new Map();
+let lastCoachText = null;
+let deathAnchor = null;
+let audioCtx = null;
+let audioReady = false;
+let soundOn = true;
+const panelErrors = new Map();
 
 const OBJECTIVES = ['dragon soul', 'elder dragon', 'rift herald', 'voidgrubs', 'rift scuttler', 'scuttle crab', 'blue buff', 'red buff', 'inhibitor', 'dragon', 'baron', 'herald', 'grubs', 'scuttle', 'elder', 'soul', 'turret', 'turrets', 'plates', 'raptors', 'wolves', 'gromp', 'krugs'];
 
+const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+const num = v => {
+  if (typeof v === 'number' && isFinite(v)) return v;
+  if (typeof v === 'string' && v.trim() !== '') { const n = Number(v); if (isFinite(n)) return n; }
+  return null;
+};
+const numTxt = (v, d) => { const n = num(v); return n == null ? (d == null ? '\u2014' : d) : String(Math.round(n)); };
+const validVersion = v => typeof v === 'string' && /^\d+\.\d+\.\d+$/.test(v);
+const cdnUrl = p => 'https://ddragon.leagueoflegends.com/cdn/' + cdnVersion + p;
+const safeId = v => {
+  const n = num(v);
+  return (n != null && Number.isInteger(n) && n > 0 && n < 100000000) ? n : null;
+};
+const safeChampKey = v => {
+  const s = String(v == null ? '' : v).replace(/[^A-Za-z0-9_]/g, '');
+  return s || 'Unknown';
+};
+const normalizeTeam = t => {
+  const v = String(t == null ? '' : t).toUpperCase();
+  return v === 'ORDER' || v === 'CHAOS' ? v : null;
+};
+
+function loadSoundPref(){
+  try { return localStorage.getItem('lolcoachMute') !== '1'; } catch (e) { return true; }
+}
+soundOn = loadSoundPref();
+
 function buildKeywords(){
   const champs = new Set();
-  for (const p of [...(state.myTeam || []), ...(state.enemyTeam || [])]) if (p.champ) champs.add(p.champ);
-  const items = new Set([...hlItems, ...(lastPlanItems || []).map(i => i.name)]);
+  for (const p of [...(state.myTeam || []), ...(state.enemyTeam || []), ...(state.players || [])]) {
+    if (isObj(p) && typeof p.champ === 'string' && p.champ) champs.add(p.champ);
+  }
+  const items = new Set([...hlItems, ...(lastPlanItems || []).map(i => isObj(i) ? i.name : '')]);
   const all = [
     ...[...champs].map(n => [n, 'hl-champ']),
     ...[...items].map(n => [n, 'hl-item']),
@@ -304,22 +366,39 @@ function highlight(raw){
   return out;
 }
 
-let soundOn = localStorage.getItem('lolcoachMute') !== '1';
-let audioCtx = null;
-let lastCoachText = null, lastDeathText = null;
-let deathAnchor = null;
-
+function refreshAudioState(){
+  audioReady = !!(soundOn && audioCtx && audioCtx.state === 'running');
+  const icon = document.getElementById('muteIcon');
+  const btn = document.getElementById('muteBtn');
+  const st = document.getElementById('audioState');
+  const state = !soundOn ? 'off' : (audioReady ? 'on' : (audioCtx ? 'blocked' : 'tap'));
+  if (icon) icon.className = 'ph-fill ' + (!soundOn ? 'ph-speaker-slash' : (audioReady ? 'ph-speaker-high' : 'ph-speaker-low'));
+  if (btn) {
+    btn.classList.toggle('off', !soundOn);
+    btn.title = state === 'off' ? 'sound off — click to enable'
+      : (state === 'on' ? 'sound on — click to test/mute'
+      : (state === 'blocked' ? 'sound on but blocked by browser — click to allow audio' : 'sound on — click to enable/test audio'));
+  }
+  if (st) {
+    st.textContent = { off: 'audio off', on: 'audio on', blocked: 'audio blocked', tap: 'audio tap to enable' }[state];
+    st.className = 'audiostate ' + state;
+  }
+}
 function ensureAudio(){
   try {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
+    if (audioCtx.state === 'suspended') {
+      const p = audioCtx.resume();
+      if (p && typeof p.then === 'function') p.then(refreshAudioState).catch(() => {});
+    }
   } catch (e) { audioCtx = null; }
+  refreshAudioState();
   return audioCtx;
 }
 function chime(kind){
-  if (!soundOn) return;
+  if (!soundOn) return false;
   const ctx = ensureAudio();
-  if (!ctx) return;
+  if (!ctx || ctx.state !== 'running') return false;
   const t0 = ctx.currentTime + 0.01;
   const notes = kind === 'death' ? [[392, 0], [311.13, 0.16]] : [[880, 0], [1174.66, 0.11]];
   for (const pair of notes) {
@@ -336,30 +415,83 @@ function chime(kind){
     o.connect(g); g.connect(ctx.destination);
     o.start(start); o.stop(start + 0.5);
   }
+  return true;
 }
-function updateMuteIcon(){
-  document.getElementById('muteIcon').className = 'ph-fill ' + (soundOn ? 'ph-speaker-high' : 'ph-speaker-slash');
-  document.getElementById('muteBtn').classList.toggle('off', !soundOn);
+
+function panelFail(key, msg){ panelErrors.set(key, String(msg || 'unavailable')); renderDiag(); }
+function panelOk(key){ if (panelErrors.delete(key)) renderDiag(); }
+function renderDiag(){
+  const el = document.getElementById('diag');
+  if (!el) return;
+  if (!panelErrors.size) { el.textContent = ''; el.title = ''; el.classList.remove('show'); return; }
+  el.textContent = 'issues: ' + [...panelErrors.keys()].join(', ');
+  el.title = [...panelErrors.entries()].map(([k, v]) => k + ': ' + v).join('\n');
+  el.classList.add('show');
 }
 
 function tidy(s){ let x = String(s ?? ''); for (const [re, rep] of MOJIBAKE) x = x.replace(re, rep); return x; }
 const esc = s => tidy(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const fmt = s => { s = Math.max(0, Math.floor(s)); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; };
+const fmt = s => {
+  const n = num(s);
+  if (n == null || n < 0) return '--:--';
+  const x = Math.max(0, Math.floor(n));
+  return `${Math.floor(x/60)}:${String(x%60).padStart(2,'0')}`;
+};
 
 function setStatus(kind, text){
-  document.getElementById('statIcon').className = 'ph-fill ph-broadcast st-' + kind;
+  const icon = document.getElementById('statIcon');
+  if (icon) icon.className = 'ph-fill ph-broadcast st-' + kind;
   document.getElementById('statusText').textContent = text;
 }
+function setCost(total, sub){
+  document.getElementById('costTotal').textContent = total;
+  document.getElementById('costSub').textContent = sub;
+}
+
+async function fetchJson(url, timeoutMs){
+  const ac = new AbortController();
+  const to = setTimeout(() => { try { ac.abort(); } catch (e) {} }, timeoutMs || 8000);
+  try {
+    const r = await fetch(url, { cache: 'no-store', signal: ac.signal });
+    let json = null, badJson = false;
+    try { json = await r.json(); } catch (e) { badJson = true; }
+    return { status: r.status, ok: r.ok, json: json, badJson: badJson };
+  } finally { clearTimeout(to); }
+}
+
+function setCdnVersion(v){
+  if (!validVersion(v) || v === cdnVersion) return;
+  cdnVersion = v;
+  if (state.inGame) render(state);
+  else if (lastPlanItems.length) renderPlan(lastPlanItems);
+}
+
+document.addEventListener('error', ev => {
+  const img = ev.target;
+  if (!img || img.tagName !== 'IMG') return;
+  const fb = img.getAttribute('data-fallback');
+  if (fb && !img.dataset.fbUsed) {
+    img.dataset.fbUsed = '1';
+    img.onerror = null;
+    img.src = fb;
+  } else {
+    img.style.display = 'none';
+  }
+}, true);
 
 function itemImgs(items, spells){
   let h = '<div class="items">';
-  for (const it of items || []) {
-    h += `<img src="${CDN}/img/item/${it.id}.png" title="${esc(it.n)}" onerror="this.style.display='none'">`;
+  for (const it of (Array.isArray(items) ? items : [])) {
+    if (!isObj(it)) continue;
+    const id = safeId(it.id);
+    if (id == null) continue;
+    h += `<img src="${cdnUrl('/img/item/' + id + '.png')}" title="${esc(it.n)}" alt="">`;
   }
-  if (spells && spells.length) {
+  if (Array.isArray(spells) && spells.length) {
     h += '<span class="spells">';
     for (const sp of spells) {
-      const f = SPELL_ICONS[sp]; if (f) h += `<img src="${CDN}/img/spell/${f}.png" title="${esc(sp)}" onerror="this.style.display='none'">`;
+      const f = SPELL_ICONS[sp];
+      if (f) h += `<img src="${cdnUrl('/img/spell/' + f + '.png')}" title="${esc(sp)}" alt="">`;
     }
     h += '</span>';
   }
@@ -368,64 +500,120 @@ function itemImgs(items, spells){
 }
 
 function playerCard(p, opp){
+  if (!isObj(p)) return '';
   const pos = POS[p.pos] ?? p.pos;
-  const gold = (p.gold != null) ? ` · <span class="gold">${Math.round(p.gold)}g</span>` : '';
-  let bar = '';
-  let deltaTxt = '';
-  let tip = '';
-  if (opp) {
-    const dv = (p.value || 0) - (opp.value || 0);
-    const ad = Math.abs(dv);
-    if (ad >= 150) {
-      const pct = Math.min(100, ad / 20);
-      bar = `<span class="advbar ${dv > 0 ? 'ahead' : 'behind'}" style="width:${pct}%"></span>`;
-      const v = ad >= 1000 ? (ad / 1000).toFixed(1) + 'k' : ad;
-      deltaTxt = ` · <span class="delta ${dv > 0 ? 'plus' : 'minus'}">${dv > 0 ? '+' : '-'}${v}</span>`;
-      tip = ` title="item gold vs ${esc(opp.champ)}: ${dv > 0 ? '+' : ''}${dv}g"`;
+  const goldN = num(p.gold);
+  const gold = goldN != null ? ` · <span class="gold" title="available gold">${Math.round(goldN)}g</span>` : '';
+  let bar = '', deltaTxt = '', tip = '';
+  if (isObj(opp)) {
+    const pv = num(p.value), ov = num(opp.value);
+    if (pv != null && ov != null) {
+      const dv = pv - ov, ad = Math.abs(dv);
+      if (ad >= 150) {
+        const pct = Math.min(100, ad / 20);
+        bar = `<span class="advbar ${dv > 0 ? 'ahead' : 'behind'}" style="width:${pct}%"></span>`;
+        const v = ad >= 1000 ? (ad / 1000).toFixed(1) + 'k' : String(ad);
+        deltaTxt = ` · <span class="delta ${dv > 0 ? 'plus' : 'minus'}">${dv > 0 ? '+' : '-'}${v}</span>`;
+        const kind = p.valueKind === 'inventory_catalog_value' ? 'inventory catalog value' : 'item value';
+        tip = ` title="${kind} vs ${esc(opp.champ)}: ${dv > 0 ? '+' : ''}${Math.round(dv)} (not total gold)"`;
+      }
     }
   }
   let extra = '';
   if (p.me) {
-    const a = p.abil || {};
-    extra = `<div class="mextra">Q${a.Q ?? 0} W${a.W ?? 0} E${a.E ?? 0} R${a.R ?? 0}${p.keystone ? ' · ' + esc(p.keystone) : ''}</div>`;
+    const a = isObj(p.abil) ? p.abil : {};
+    extra = `<div class="mextra">Q${numTxt(a.Q)} W${numTxt(a.W)} E${numTxt(a.E)} R${numTxt(a.R)}${p.keystone ? ' · ' + esc(p.keystone) : ''}</div>`;
   }
+  const key = safeChampKey(p.key || p.champ);
   return `<div class="prow${p.me ? ' me' : ''}"${tip}>${bar}
-    <img class="champ" src="${CDN}/img/champion/${p.key}.png" title="${esc(p.champ)}" onerror="this.src='${CDN}/img/champion/Unknown.png'">
+    <img class="champ" src="${cdnUrl('/img/champion/' + key + '.png')}" data-fallback="${cdnUrl('/img/champion/Unknown.png')}" title="${esc(p.champ)}" alt="">
     <div>
-      <div class="pline"><span class="pname">${esc(p.champ)}</span><span class="lvl">${p.level}</span>${p.me ? '<span class="you">YOU</span>' : ''}<span class="pos">${esc(pos)}</span></div>
+      <div class="pline"><span class="pname">${esc(p.champ)}</span><span class="lvl">${numTxt(p.level)}</span>${p.me ? '<span class="you">YOU</span>' : ''}<span class="pos">${esc(pos)}</span></div>
       ${itemImgs(p.items, p.spells)}
       ${extra}
     </div>
-    <div class="kda"><span class="k">${p.k ?? 0}</span>/<span class="d">${p.d ?? 0}</span>/<span class="a">${p.a ?? 0}</span><span class="cs">${p.cs ?? 0} CS${gold}${deltaTxt}</span></div>
+    <div class="kda"><span class="k">${numTxt(p.k, '–')}</span>/<span class="d">${numTxt(p.d, '–')}</span>/<span class="a">${numTxt(p.a, '–')}</span><span class="cs">${numTxt(p.cs, '–')} CS${gold}${deltaTxt}</span></div>
   </div>`;
+}
+function explicitSoul(s){
+  let raw;
+  if (typeof s.soulTeam === 'string') raw = s.soulTeam;
+  else if (typeof s.soul === 'string') raw = s.soul;
+  else if (isObj(s.soul) && (s.soul.team != null || s.soul.status != null)) raw = s.soul.team != null ? s.soul.team : s.soul.status;
+  else if (typeof s.dragonSoul === 'string') raw = s.dragonSoul;
+  else if (isObj(s.dragonSoul)) raw = s.dragonSoul.team != null ? s.dragonSoul.team : s.dragonSoul.status;
+  if (raw === undefined || raw === null) return { present: false };
+  const v = String(raw).toLowerCase();
+  if (v === 'order' || v === 'chaos') return { present: true, team: v.toUpperCase() };
+  if (v === 'none' || v === 'no_soul' || v === 'nosoul' || v === '') return { present: true, team: null };
+  return { present: true, team: 'unknown' };
+}
+
+function dragonTiming(s){
+  const kills = (Array.isArray(s.dragonKills) ? s.dragonKills : [])
+    .filter(k => isObj(k) && num(k.t) != null)
+    .map(k => ({ t: num(k.t), type: String(k.type || ''), team: normalizeTeam(k.team || k.killerTeam) }))
+    .sort((a, b) => a.t - b.t);
+  const elementals = kills.filter(k => k.type !== 'Elder');
+  const allTeamsKnown = elementals.length > 0 && elementals.every(k => k.team);
+  const counts = { ORDER: 0, CHAOS: 0, unknown: 0 };
+  for (const k of elementals) { if (k.team) counts[k.team]++; else counts.unknown++; }
+  const explicit = explicitSoul(s);
+  let owner = null, soulKnown = false;
+  if (explicit.present) {
+    if (explicit.team === 'unknown') soulKnown = false;
+    else { soulKnown = true; owner = explicit.team; }
+  } else if (allTeamsKnown) {
+    soulKnown = true;
+    if (counts.ORDER >= 4) owner = 'ORDER';
+    else if (counts.CHAOS >= 4) owner = 'CHAOS';
+  }
+  const last = kills.length ? kills[kills.length - 1] : null;
+  const elderNext = !!(last && (last.type === 'Elder' || (soulKnown && owner)));
+  const next = last ? last.t + (elderNext ? 360 : 300) : 300;
+  let soulText, countsText = '';
+  if (elementals.length) countsText = `drakes O${counts.ORDER} C${counts.CHAOS}` + (counts.unknown ? ` U${counts.unknown}` : '');
+  if (!soulKnown) soulText = 'soul: unknown';
+  else if (!owner) soulText = 'soul: none yet';
+  else {
+    const me = (Array.isArray(s.myTeam) ? s.myTeam : []).find(p => isObj(p) && p.me);
+    const mySide = me ? normalizeTeam(me.team) : null;
+    soulText = 'soul: ' + (mySide ? (owner === mySide ? 'your team' : 'enemy team') : owner);
+  }
+  return { next, total: kills.length, soulText, countsText, elderNext };
 }
 
 function renderTopbar(s, now){
-  const dk = s.dragonKills || [], bk = s.baronKills || [];
-  let dNext;
-  if (!dk.length) dNext = 300;
-  else { const last = dk[dk.length-1]; dNext = last.t + ((last.type === 'Elder' || dk.length >= 4) ? 360 : 300); }
-  const bNext = bk.length ? bk[bk.length-1].t + 360 : 1200;
-  const obj = (id, at) => {
+  const t = num(now);
+  const dt = dragonTiming(s);
+  const dEl = document.getElementById('objDragon');
+  if (dEl) dEl.title = dt.soulText + (dt.elderNext ? ' · elder next' : '') + (dt.countsText ? ' · ' + dt.countsText : '');
+  const val = (id, at) => {
     const el = document.getElementById(id);
-    const left = at - now;
+    if (t == null) { el.classList.remove('up', 'soon'); return '--:--'; }
+    const left = at - t;
     el.classList.toggle('up', left <= 0);
     el.classList.toggle('soon', left > 0 && left <= 60);
     return left <= 0 ? 'UP' : fmt(left);
   };
-  document.getElementById('dragonVal').textContent = obj('objDragon', dNext) + (dk.length ? ' (' + dk.length + ')' : '');
-  document.getElementById('baronVal').textContent = obj('objBaron', bNext);
-  document.getElementById('phaseVal').textContent = now < 14*60 ? 'EARLY' : (now < 25*60 ? 'MID' : 'LATE');
+  document.getElementById('dragonVal').textContent = val('objDragon', dt.next) + (dt.total ? ' (' + dt.total + ')' : '');
+  const bkr = (Array.isArray(s.baronKills) ? s.baronKills : [])
+    .map(k => num(isObj(k) ? k.t : k)).filter(v => v != null).sort((a, b) => a - b);
+  const bNext = bkr.length ? bkr[bkr.length - 1] + 360 : 1200;
+  document.getElementById('baronVal').textContent = val('objBaron', bNext);
+  document.getElementById('phaseVal').textContent = t == null ? '—' : (t < 14*60 ? 'EARLY' : (t < 25*60 ? 'MID' : 'LATE'));
 }
 
 function renderEvents(ev){
   const el = document.getElementById('events');
   const out = [];
-  for (const e of (ev || [])) {
+  const who = v => (typeof v === 'string' && v) ? v : 'unknown';
+  for (const e of (Array.isArray(ev) ? ev : [])) {
+    if (!isObj(e) || num(e.t) == null) continue;
     let txt = null;
-    if (e.n === 'ChampionKill') txt = `${e.killer} killed ${e.victim}`;
-    else if (e.n === 'DragonKill') txt = `${e.dragon} dragon slain by ${e.killer}`;
-    else if (e.n === 'BaronKill') txt = `Baron slain by ${e.killer}`;
+    if (e.n === 'ChampionKill') txt = `${who(e.killer)} killed ${who(e.victim)}`;
+    else if (e.n === 'DragonKill') txt = `${who(e.dragon)} dragon slain by ${who(e.killer)}`;
+    else if (e.n === 'BaronKill') txt = `Baron slain by ${who(e.killer)}`;
     else if (e.n === 'HeraldKill') txt = 'Rift Herald slain';
     else if (e.n === 'HordeKill') txt = 'Voidgrub slain';
     else if (e.n === 'TurretKilled') txt = 'Turret destroyed';
@@ -437,35 +625,59 @@ function renderEvents(ev){
   el.innerHTML = out.slice(-5).join('');
 }
 
-function renderPlan(items){
-  lastPlanItems = items || [];
+function showPlanError(msg){
   const strip = document.getElementById('buildStrip');
-  if (!lastPlanItems.length) { strip.style.display = 'none'; return; }
+  const errEl = document.getElementById('buildErr');
+  if (errEl) errEl.textContent = msg;
+  if (lastPlanItems.length && strip) strip.style.display = 'flex';
+}
+
+function renderPlan(items){
+  const strip = document.getElementById('buildStrip');
+  const errEl = document.getElementById('buildErr');
+  if (!state.inGame) {
+    lastPlanItems = [];
+    strip.style.display = 'none';
+    document.getElementById('buildItems').innerHTML = '';
+    if (errEl) errEl.textContent = '';
+    return;
+  }
+  lastPlanItems = (Array.isArray(items) ? items : [])
+    .filter(it => isObj(it) && typeof it.name === 'string' && it.name.length <= 60);
+  if (errEl) errEl.textContent = '';
+  if (!lastPlanItems.length) { strip.style.display = 'none'; document.getElementById('buildItems').innerHTML = ''; return; }
   strip.style.display = 'flex';
-  const me = (state.myTeam || []).find(x => x.me);
-  const inv = (me && me.items) ? me.items : [];
-  const ownedIds = new Set(inv.map(i => i.id));
+  strip.title = 'Plan progress reflects current inventory only; sold items are not remembered';
+  const me = [...(state.myTeam || []), ...(state.players || [])].find(x => isObj(x) && x.me);
+  const inv = (me && Array.isArray(me.items)) ? me.items : [];
+  const ownedIds = new Set();
+  for (const i of inv) { const id = safeId(isObj(i) ? i.id : null); if (id != null) ownedIds.add(id); }
   const isDone = it => {
-    if (!it.id) return false;
-    if (ownedIds.has(it.id)) return true;
-    if (it.chain) for (const c of it.chain) if (ownedIds.has(c)) return true;
+    const id = safeId(it.id);
+    if (id == null) return false;
+    if (ownedIds.has(id)) return true;
+    if (Array.isArray(it.chain)) for (const c of it.chain) { const cid = safeId(c); if (cid != null && ownedIds.has(cid)) return true; }
     return false;
   };
   let html = '';
   const seen = new Set();
   for (const it of inv) {
-    if (!it.id || seen.has(it.id)) continue;
-    seen.add(it.id);
-    html += `<span class="bitem cur" title="${esc(it.n)}"><img src="${CDN}/img/item/${it.id}.png" onerror="this.style.display='none'"></span>`;
+    if (!isObj(it)) continue;
+    const id = safeId(it.id);
+    if (id == null || seen.has(id)) continue;
+    seen.add(id);
+    html += `<span class="bitem cur" title="${esc(it.n)}"><img src="${cdnUrl('/img/item/' + id + '.png')}" alt=""></span>`;
   }
   const pending = lastPlanItems.filter(it => !isDone(it));
-  html += '<i class="ph-bold ph-caret-right barrow"></i>';
+  const caret = '<i class="ph-fill ph-caret-right barrow"></i>';
+  html += caret;
   if (pending.length) {
     pending.forEach((it, i) => {
-      if (i) html += '<i class="ph-bold ph-caret-right barrow"></i>';
+      if (i) html += caret;
       const next = i === 0;
+      const id = safeId(it.id);
       html += `<span class="bitem ${next ? 'next' : 'todo'}" title="${esc(it.name)}${next ? ' - next buy' : ''}">`;
-      if (it.id) html += `<img src="${CDN}/img/item/${it.id}.png" onerror="this.style.display='none'">`;
+      if (id != null) html += `<img src="${cdnUrl('/img/item/' + id + '.png')}" alt="">`;
       else html += `<span style="font-size:9.5px;color:var(--dim);white-space:nowrap">${esc(it.name)}</span>`;
       html += '</span>';
     });
@@ -475,43 +687,160 @@ function renderPlan(items){
   document.getElementById('buildItems').innerHTML = html;
 }
 
-function render(s){
-  if (!s.inGame) {
-    document.getElementById('clock').textContent = '--:--';
-    document.getElementById('summoner').textContent = '—';
-    document.getElementById('dragonVal').textContent = '--:--';
-    document.getElementById('baronVal').textContent = '--:--';
-    document.getElementById('phaseVal').textContent = '—';
-    document.getElementById('team1').innerHTML = '';
-    document.getElementById('team2').innerHTML = '';
-    document.getElementById('events').innerHTML = '';
-    document.getElementById('idleMsg').style.display = 'flex';
-    document.querySelector('.teams').style.display = 'none';
-    setStatus('wait', 'waiting for a game');
-    return;
+function pickTeams(s){
+  let mine = (Array.isArray(s.myTeam) ? s.myTeam : []).filter(isObj);
+  let foe = (Array.isArray(s.enemyTeam) ? s.enemyTeam : []).filter(isObj);
+  const identity = isObj(s.identity) ? s.identity : null;
+  let resolved = identity ? identity.status === 'resolved' : false;
+  if (mine.some(p => p.me)) resolved = true;
+  if (!mine.length && !foe.length && Array.isArray(s.players)) {
+    const players = s.players.filter(isObj);
+    const meP = players.find(p => p.me);
+    const mySide = meP ? normalizeTeam(meP.team) : null;
+    if (mySide) {
+      mine = players.filter(p => normalizeTeam(p.team) === mySide);
+      foe = players.filter(p => normalizeTeam(p.team) !== mySide);
+      return { mine, foe, resolved: true, mineLabel: 'Your team', foeLabel: 'Enemy team' };
+    }
+    const order = players.filter(p => normalizeTeam(p.team) === 'ORDER');
+    const chaos = players.filter(p => normalizeTeam(p.team) === 'CHAOS');
+    return { mine: order, foe: chaos, resolved: false, mineLabel: 'ORDER', foeLabel: 'CHAOS' };
   }
-  document.getElementById('idleMsg').style.display = 'none';
-  document.querySelector('.teams').style.display = 'grid';
-  const all = [...s.myTeam, ...s.enemyTeam];
-  const me = all.find(p => p.me);
-  if (me) document.getElementById('summoner').textContent = me.name || me.champ;
-  buildKeywords();
-  const mineByPos = {}, foeByPos = {};
-  for (const p of s.myTeam) if (p.pos && p.pos !== 'NONE') mineByPos[p.pos] = p;
-  for (const p of s.enemyTeam) if (p.pos && p.pos !== 'NONE') foeByPos[p.pos] = p;
-  document.getElementById('team1').innerHTML = s.myTeam.map(p => playerCard(p, foeByPos[p.pos])).join('');
-  document.getElementById('team2').innerHTML = s.enemyTeam.map(p => playerCard(p, mineByPos[p.pos])).join('');
-  renderTopbar(s, s.time);
-  renderEvents(s.events);
-  renderPlan(lastPlanItems);
-  setStatus('live', 'live · ' + s.mode);
+  if (!resolved) {
+    const mineSide = mine.length ? normalizeTeam(mine[0].team) : null;
+    const foeSide = foe.length ? normalizeTeam(foe[0].team) : null;
+    return { mine, foe, resolved: false, mineLabel: mineSide || 'Team 1', foeLabel: foeSide || 'Team 2' };
+  }
+  return { mine, foe, resolved: true, mineLabel: 'Your team', foeLabel: 'Enemy team' };
 }
 
+function renderIdle(kind, msg){
+  state = { inGame: false, status: kind };
+  lastGoodAt = 0;
+  anchor = { t: 0, at: performance.now() };
+  document.getElementById('clock').textContent = '--:--';
+  document.getElementById('clock').classList.remove('stale');
+  document.getElementById('summoner').textContent = '—';
+  document.getElementById('dragonVal').textContent = '--:--';
+  document.getElementById('baronVal').textContent = '--:--';
+  document.getElementById('phaseVal').textContent = '—';
+  for (const id of ['objDragon', 'objBaron']) {
+    const el = document.getElementById(id);
+    el.classList.remove('up', 'soon');
+    el.title = '';
+  }
+  document.getElementById('team1').innerHTML = '';
+  document.getElementById('team2').innerHTML = '';
+  document.getElementById('teamTitle1').textContent = 'Your team';
+  document.getElementById('teamTitle2').textContent = 'Enemy team';
+  document.getElementById('events').innerHTML = '';
+  document.getElementById('buildStrip').style.display = 'none';
+  document.getElementById('buildItems').innerHTML = '';
+  document.getElementById('buildErr').textContent = '';
+  lastPlanItems = [];
+  document.getElementById('deathWrap').style.display = 'none';
+  document.getElementById('death').innerHTML = '';
+  document.getElementById('deathAge').textContent = '';
+  deathAnchor = null;
+  document.getElementById('idleMsg').style.display = 'flex';
+  document.getElementById('idleMsg').innerHTML = esc(msg);
+  document.querySelector('.teams').style.display = 'none';
+}
+
+function gameTrouble(statusText, detail){
+  panelFail('game', detail || statusText);
+  setStatus('dead', statusText);
+  if (state.inGame) {
+    state.stale = true;
+    document.getElementById('clock').classList.add('stale');
+    return;
+  }
+  renderIdle('error', statusText + ' — retrying…');
+}
+
+function render(s){
+  const teams = pickTeams(s);
+  state = s;
+  state.inGame = true;
+  state.stale = false;
+  document.getElementById('idleMsg').style.display = 'none';
+  document.querySelector('.teams').style.display = 'grid';
+  const all = [...teams.mine, ...teams.foe];
+  const me = all.find(p => isObj(p) && p.me);
+  document.getElementById('summoner').textContent = me ? (me.name || me.champ || '—') : (teams.resolved ? '—' : 'identity unresolved');
+  document.getElementById('teamTitle1').textContent = teams.mineLabel;
+  document.getElementById('teamTitle2').textContent = teams.foeLabel;
+  buildKeywords();
+  const mineByPos = {}, foeByPos = {};
+  for (const p of teams.mine) if (p.pos && p.pos !== 'NONE') mineByPos[p.pos] = p;
+  for (const p of teams.foe) if (p.pos && p.pos !== 'NONE') foeByPos[p.pos] = p;
+  document.getElementById('team1').innerHTML = teams.mine.map(p => playerCard(p, foeByPos[p.pos])).join('');
+  document.getElementById('team2').innerHTML = teams.foe.map(p => playerCard(p, mineByPos[p.pos])).join('');
+  const t = num(s.time);
+  document.getElementById('clock').textContent = t == null ? '--:--' : fmt(t);
+  document.getElementById('clock').classList.remove('stale');
+  renderTopbar(s, t);
+  renderEvents(s.events);
+  renderPlan(lastPlanItems);
+  const mode = typeof s.mode === 'string' && s.mode ? s.mode : 'live';
+  if (!teams.resolved) setStatus('wait', 'live · ' + mode + ' · identity unresolved');
+  else setStatus('live', 'live · ' + mode);
+}
+
+function handleGame(j){
+  if (!isObj(j)) { gameTrouble('UI server sent malformed data'); return; }
+  if (!versionResolved && validVersion(j.assetVersion)) setCdnVersion(j.assetVersion);
+  const status = typeof j.status === 'string' ? j.status : (j.inGame ? 'live' : 'no_game');
+  if (status === 'live' && j.inGame) {
+    panelOk('game');
+    if (j.sessionId != null && j.sessionId !== currentSession) {
+      currentSession = j.sessionId;
+      document.getElementById('deathWrap').style.display = 'none';
+      deathAnchor = null;
+    }
+    const t = num(j.time);
+    if (t != null) anchor = { t: t, at: performance.now() };
+    const fetched = num(j.fetchedAt);
+    const transitMs = fetched != null ? Math.max(0, Math.min(60000, (Date.now() / 1000 - fetched) * 1000)) : 0;
+    lastGoodAt = performance.now() - transitMs;
+    render(j);
+    return;
+  }
+  if (status === 'no_game') {
+    panelOk('game');
+    const why = typeof j.reason === 'string' && j.reason ? ' (' + j.reason.replace(/_/g, ' ') + ')' : '';
+    renderIdle('no_game', 'Not in a game yet' + why + ' — queue up and this board comes alive.');
+    setStatus('wait', 'not in a game');
+    return;
+  }
+  if (status === 'api_error') {
+    const why = typeof j.reason === 'string' ? j.reason : (typeof j.error === 'string' ? j.error : 'unknown');
+    gameTrouble('Live Client API: ' + why, 'live client api error: ' + why);
+    return;
+  }
+  gameTrouble('Unexpected game response from UI server');
+}
+
+async function pollGame(){
+  if (gameBusy) return;
+  gameBusy = true;
+  const seq = ++gameSeq;
+  try {
+    const r = await fetchJson('/api/game', 8000);
+    if (seq !== gameSeq) return;
+    if (r.badJson || r.json == null) { gameTrouble('UI server sent malformed data'); return; }
+    handleGame(r.json);
+  } catch (e) {
+    if (seq === gameSeq) gameTrouble(state.inGame ? 'UI server offline — showing stale board' : 'UI server offline');
+  } finally { gameBusy = false; }
+}
 function renderCoach(j){
+  if (!isObj(j)) return;
   const el = document.getElementById('coach');
-  document.getElementById('coachAge').textContent = (j.age != null) ? `${Math.round(j.age)}s ago` : '';
-  const text = (j.text || '').trim();
-  if (text && text !== 'OUT OF GAME' && lastCoachText !== null && text !== lastCoachText) chime('tick');
+  const age = num(j.age);
+  document.getElementById('coachAge').textContent = age != null ? `${Math.round(age)}s ago` : '';
+  const text = typeof j.text === 'string' ? j.text.trim() : '';
+  if (text && text !== 'OUT OF GAME' && text !== lastCoachText) chime('tick');
   if (text) lastCoachText = text;
   if (!text) { el.innerHTML = '<div class="coach-wait">Waiting for the first coach tick…</div>'; return; }
   if (text === 'OUT OF GAME') { el.innerHTML = '<div class="coach-wait">Coach idle — not in a game.</div>'; return; }
@@ -532,37 +861,29 @@ function renderCoach(j){
   el.innerHTML = html;
 }
 
-function updateDeathRing(){
-  const wrap = document.getElementById('deathWrap');
-  if (!deathAnchor || deathAnchor.kind !== 'final' || wrap.style.display === 'none') return;
-  const age = deathAnchor.age + (performance.now() - deathAnchor.at) / 1000;
-  const arc = document.getElementById('deathArc');
-  if (arc) arc.setAttribute('stroke-dashoffset', String(37.7 * Math.min(1, age / 60)));
-  document.getElementById('deathAge').textContent = age < 8 ? 'just now' : `${Math.round(age)}s ago`;
-  if (age > 60) { wrap.style.display = 'none'; deathAnchor = null; }
-}
-
 function renderDeath(j){
+  if (!isObj(j)) return;
   const wrap = document.getElementById('deathWrap');
   const el = document.getElementById('death');
   const ring = document.getElementById('deathRing');
-  const text = (j.text || '').trim();
-  if (!text || j.age == null) { wrap.style.display = 'none'; deathAnchor = null; return; }
+  const text = typeof j.text === 'string' ? j.text.trim() : '';
+  const age = num(j.age);
+  if (!text || age == null) { wrap.style.display = 'none'; deathAnchor = null; return; }
   const pend = text.match(/^PENDING\|([^|]+)\|(.+)$/);
   if (pend) {
     wrap.style.display = 'block';
     const isNew = !deathAnchor || deathAnchor.kind !== 'pending' || deathAnchor.clock !== pend[1] || deathAnchor.killer !== pend[2];
     if (isNew) chime('death');
-    deathAnchor = { kind: 'pending', clock: pend[1], killer: pend[2], age: j.age, at: performance.now() };
+    deathAnchor = { kind: 'pending', clock: pend[1], killer: pend[2], age: age, at: performance.now() };
     ring.style.display = 'none';
     document.getElementById('deathAge').textContent = 'analyzing';
-    el.innerHTML = `<div class="chead death"><i class="ph-fill ph-skull"></i> Died ${highlight(pend[1])} to ${highlight(pend[2])} - generating report</div><div class="dloading"><i class="ph-bold ph-spinner-gap"></i>analyzing the death and your best options...</div>`;
+    el.innerHTML = `<div class="chead death"><i class="ph-fill ph-skull"></i> Died ${highlight(pend[1])} to ${highlight(pend[2])} - generating report</div><div class="dloading"><i class="ph-fill ph-spinner-gap"></i>analyzing the death and your best options...</div>`;
     return;
   }
-  if (j.age > 60) { wrap.style.display = 'none'; deathAnchor = null; return; }
+  if (age > 60) { wrap.style.display = 'none'; deathAnchor = null; return; }
   wrap.style.display = 'block';
   ring.style.display = '';
-  deathAnchor = { kind: 'final', age: j.age, at: performance.now() };
+  deathAnchor = { kind: 'final', age: age, at: performance.now() };
   updateDeathRing();
   let html = '';
   for (const raw of text.split(/\r?\n/)) {
@@ -582,62 +903,151 @@ function renderDeath(j){
   el.innerHTML = html;
 }
 
-async function pollGame(){
-  try {
-    const r = await fetch('/api/game', { cache: 'no-store' });
-    const j = await r.json();
-    state = j;
-    if (j.inGame) anchor = { t: j.time, at: performance.now() };
-    render(j);
-  } catch (e) { setStatus('dead', 'UI server offline'); }
+function updateDeathRing(){
+  const wrap = document.getElementById('deathWrap');
+  if (!deathAnchor || deathAnchor.kind !== 'final' || wrap.style.display === 'none') return;
+  if (state.inGame && lastGoodAt > 0 && performance.now() - lastGoodAt > FRESH_WINDOW_MS) return;
+  const age = deathAnchor.age + (performance.now() - deathAnchor.at) / 1000;
+  const arc = document.getElementById('deathArc');
+  if (arc) arc.setAttribute('stroke-dashoffset', String(37.7 * Math.min(1, age / 60)));
+  document.getElementById('deathAge').textContent = age < 8 ? 'just now' : `${Math.round(age)}s ago`;
+  if (age > 60) { wrap.style.display = 'none'; deathAnchor = null; }
 }
+
+function markCoachAge(t){ const el = document.getElementById('coachAge'); if (el) el.textContent = t; }
+function markDeathAge(t){
+  const wrap = document.getElementById('deathWrap');
+  const el = document.getElementById('deathAge');
+  if (el && wrap && wrap.style.display !== 'none') el.textContent = t;
+}
+
 async function pollCoach(){
-  try { renderCoach(await (await fetch('/api/coach', { cache: 'no-store' })).json()); } catch (e) {}
+  try {
+    const r = await fetchJson('/api/coach', 8000);
+    const j = r.json;
+    if (!isObj(j)) { panelFail('coach', 'malformed response'); markCoachAge('unavailable'); return; }
+    renderCoach(j);
+    if (j.status === 'error') { panelFail('coach', 'file read error'); markCoachAge('read error'); }
+    else if (j.status === 'unstable') { panelFail('coach', 'unstable file read — retrying'); markCoachAge('unstable read'); }
+    else { panelOk('coach'); }
+  } catch (e) { panelFail('coach', 'UI server offline'); markCoachAge('server offline'); }
 }
+
 async function pollDeath(){
-  try { renderDeath(await (await fetch('/api/death', { cache: 'no-store' })).json()); } catch (e) {}
+  try {
+    const r = await fetchJson('/api/death', 8000);
+    const j = r.json;
+    if (!isObj(j)) { panelFail('death', 'malformed response'); markDeathAge('unavailable'); return; }
+    renderDeath(j);
+    if (j.status === 'error') { panelFail('death', 'file read error'); markDeathAge('read error'); }
+    else if (j.status === 'unstable') { panelFail('death', 'unstable file read — retrying'); markDeathAge('unstable read'); }
+    else { panelOk('death'); }
+  } catch (e) { panelFail('death', 'UI server offline'); markDeathAge('server offline'); }
 }
+
 async function pollPlan(){
-  try { renderPlan((await (await fetch('/api/plan', { cache: 'no-store' })).json()).items || []); } catch (e) {}
+  try {
+    const r = await fetchJson('/api/plan', 8000);
+    const j = r.json;
+    if (!isObj(j)) { panelFail('plan', 'malformed response'); showPlanError('plan unavailable'); return; }
+    if (!versionResolved && validVersion(j.assetVersion)) setCdnVersion(j.assetVersion);
+    if (j.status === 'read_error') { panelFail('plan', 'plan file read error'); showPlanError('plan read error'); return; }
+    panelOk('plan');
+    renderPlan(j.items);
+  } catch (e) { panelFail('plan', 'UI server offline'); showPlanError('plan unavailable'); }
 }
+
 async function pollHighlight(){
   try {
-    const j = await (await fetch('/api/highlight', { cache: 'no-store' })).json();
-    hlItems = j.items || [];
+    const r = await fetchJson('/api/highlight', 8000);
+    const j = r.json;
+    if (!isObj(j) || !Array.isArray(j.items)) { panelFail('highlight', 'malformed response'); return; }
+    panelOk('highlight');
+    hlItems = j.items.filter(n => typeof n === 'string' && n.length <= 60);
     buildKeywords();
-  } catch (e) {}
+  } catch (e) { panelFail('highlight', 'UI server offline'); }
 }
+
 async function pollCost(){
   try {
-    const j = await (await fetch('/api/cost', { cache: 'no-store' })).json();
-    if (!j.ok) { document.getElementById('costTotal').textContent = '$0.0000'; document.getElementById('costSub').textContent = 'no game yet'; return; }
-    document.getElementById('costTotal').textContent = '$' + (j.cost || 0).toFixed(4);
-    document.getElementById('costSub').textContent = `${j.ticks} ticks this game · last $${(j.lastTick || 0).toFixed(4)}`;
+    const r = await fetchJson('/api/cost', 8000);
+    const j = r.json;
+    if (!isObj(j)) { panelFail('cost', 'malformed response'); setCost('$—', 'cost unavailable'); return; }
+    if (!j.ok) {
+      const st = typeof j.status === 'string' ? j.status : 'no_game';
+      if (st === 'no_game') { panelOk('cost'); setCost('$—', 'no game'); return; }
+      panelFail('cost', st + (typeof j.error === 'string' && j.error ? ': ' + j.error : ''));
+      setCost('$—', 'cost unavailable (' + st + ')');
+      return;
+    }
+    panelOk('cost');
+    const cost = num(j.cost), last = num(j.lastTick), ticks = num(j.ticks);
+    const total = cost != null ? '$' + cost.toFixed(4) : '$—';
+    const bits = [];
+    if (ticks != null) bits.push(`${ticks} tick${ticks === 1 ? '' : 's'}`);
+    if (last != null) bits.push('last $' + last.toFixed(4));
+    if (j.estimate || j.exact === false) bits.push('estimate');
+    setCost(total, bits.join(' · ') || '—');
+  } catch (e) { panelFail('cost', 'UI server offline'); setCost('$—', 'server offline'); }
+}
+
+async function pollVersion(){
+  try {
+    const r = await fetchJson('/api/version', 6000);
+    const j = r.json;
+    if (!isObj(j)) return;
+    const canonical = validVersion(j.version) ? j.version : (validVersion(j.championVersion) ? j.championVersion : null);
+    if (canonical) { versionResolved = true; setCdnVersion(canonical); }
+    else if (!versionResolved && validVersion(j.assetVersion)) setCdnVersion(j.assetVersion);
   } catch (e) {}
 }
+
 function tickClock(){
-  if (state.inGame) {
-    const t = anchor.t + (performance.now() - anchor.at) / 1000;
-    document.getElementById('clock').textContent = fmt(t);
-    renderTopbar(state, t);
+  if (!state.inGame || num(state.time) == null) return;
+  const now = performance.now();
+  const age = lastGoodAt > 0 ? now - lastGoodAt : Infinity;
+  const fresh = lastGoodAt > 0 && age <= FRESH_WINDOW_MS;
+  const t = fresh ? anchor.t + (now - anchor.at) / 1000 : anchor.t;
+  document.getElementById('clock').textContent = fresh ? fmt(t) : fmt(anchor.t);
+  document.getElementById('clock').classList.toggle('stale', !fresh);
+  renderTopbar(state, t);
+  if (!fresh && !state.stale) {
+    state.stale = true;
+    setStatus('dead', 'stale — last update ' + Math.round(age / 1000) + 's ago');
   }
 }
 
-document.getElementById('muteBtn').addEventListener('click', () => {
+document.getElementById('muteBtn').addEventListener('click', async () => {
   soundOn = !soundOn;
-  localStorage.setItem('lolcoachMute', soundOn ? '0' : '1');
-  updateMuteIcon();
-  if (soundOn) chime('tick');
+  try { localStorage.setItem('lolcoachMute', soundOn ? '0' : '1'); } catch (e) {}
+  if (soundOn) {
+    const ctx = ensureAudio();
+    if (ctx && ctx.state === 'suspended') { try { await ctx.resume(); } catch (e) {} }
+    chime('tick');
+  }
+  refreshAudioState();
 });
 document.addEventListener('click', () => ensureAudio(), { once: true });
-updateMuteIcon();
-pollGame(); pollCoach(); pollDeath(); pollCost(); pollPlan(); pollHighlight();
-setInterval(pollGame, 2000);
-setInterval(pollCoach, 4000);
-setInterval(pollDeath, 4000);
-setInterval(pollCost, 5000);
-setInterval(pollPlan, 10000);
-setInterval(pollHighlight, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { ensureAudio(); refreshAudioState(); } });
+
+function scheduleLoop(fn, ms){
+  let stopped = false;
+  async function step(){
+    if (stopped) return;
+    try { await fn(); } catch (e) {}
+    if (!stopped) setTimeout(step, ms);
+  }
+  step();
+}
+
+refreshAudioState();
+pollVersion();
+scheduleLoop(pollGame, 2000);
+scheduleLoop(pollCoach, 4000);
+scheduleLoop(pollDeath, 4000);
+scheduleLoop(pollCost, 5000);
+scheduleLoop(pollPlan, 10000);
+scheduleLoop(pollHighlight, 60000);
 setInterval(updateDeathRing, 1000);
 setInterval(tickClock, 250);
 </script>
