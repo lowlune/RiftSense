@@ -1,23 +1,33 @@
 """Deterministic purchase assistant for RiftSense.
 
-Pure, dependency-free item logic: item-ID recipe graph, owned-component
-subtraction, quantity handling, inventory-slot checks, map restrictions,
-affordable alternatives and gold-to-next-purchase.
+Pure, dependency-free item logic: item-ID recipe graph, quantity-aware owned
+component allocation, inventory-slot checks with stack/trinket rules, map
+restrictions, a deterministic purchase frontier (feasible component
+combinations), affordable alternatives and gold-to-next-purchase.
 
 The model explains decisions; it never does the arithmetic. Every cost in
 here comes straight from the Data Dragon catalog (``items.json``) keyed by
 item ID, so duplicate display names and localized labels cannot corrupt it.
+No floating-point cost is ever invented: catalog costs are whole gold, so
+fractional *available gold* is floored for comparison and the result says so
+with ``goldRounded``.
 """
 
 import json
+import math
 import os
 
 SLOT_COUNT = 6
+CONSUMABLE_STACK = 5
+FRONTIER_MAX_COMBOS = 6
+FRONTIER_MAX_ITEMS = 3
+FRONTIER_MAX_CANDIDATES = 8
 
 _UNKNOWN_NAME = 'unknown item'
 
 
 def _int(value):
+    """Strict integer parsing for catalog data (IDs, costs, quantities)."""
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
@@ -33,6 +43,32 @@ def _int(value):
         except ValueError:
             return None
     return None
+
+
+def _gold_value(value):
+    """Finite, non-negative gold as a float; ``None`` for anything else.
+
+    Unlike item costs, current gold from the live client can legitimately be
+    fractional, so this accepts ``800.5`` and ``"800.5"``. Rejects booleans,
+    NaN, infinities, negatives, and empty/non-numeric strings.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        number = float(value)
+    elif isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            number = float(text)
+        except ValueError:
+            return None
+    else:
+        return None
+    if not math.isfinite(number) or number < 0:
+        return None
+    return number
 
 
 def _gold_total(raw):
@@ -158,17 +194,20 @@ def chain_of(catalog, item_id):
     return sorted(seen)
 
 
-def inventory_summary(item_entries):
-    """Collapse inventory entries to ``{item_id: stack_count}``.
+def inventory_entries(item_entries):
+    """Preserve live-client slot entries as ``[{'id': id, 'qty': n}]``.
 
-    Accepts live-client style dicts (``id``/``itemID``/``itemId`` plus
-    ``count``/``q``/``qty``/``quantity``). Duplicate IDs are summed; a
-    missing or non-positive quantity counts as one. Anything malformed is
-    ignored rather than guessed at.
+    Unlike :func:`inventory_summary` this keeps one record per client entry
+    (one inventory slot each, client order preserved) so repeated components
+    are not collapsed before slot accounting. Accepts an
+    ``inventory_state``/``{'entries': [...]}`` dict as well. Malformed
+    entries are ignored rather than guessed at.
     """
-    counts = {}
+    if isinstance(item_entries, dict) and isinstance(item_entries.get('entries'), (list, tuple)):
+        item_entries = item_entries['entries']
+    entries = []
     if not isinstance(item_entries, (list, tuple)):
-        return counts
+        return entries
     for raw in item_entries:
         if not isinstance(raw, dict):
             continue
@@ -186,13 +225,27 @@ def inventory_summary(item_entries):
                 break
         if quantity is None or quantity < 1:
             quantity = 1
-        counts[iid] = counts.get(iid, 0) + quantity
+        entries.append({'id': iid, 'qty': quantity})
+    return entries
+
+
+def inventory_summary(item_entries):
+    """Collapse inventory entries to ``{item_id: stack_count}``.
+
+    Accepts live-client style dicts (``id``/``itemID``/``itemId`` plus
+    ``count``/``q``/``qty``/``quantity``) or an ``inventory_state`` dict.
+    Duplicate IDs are summed; a missing or non-positive quantity counts as
+    one. Anything malformed is ignored rather than guessed at.
+    """
+    counts = {}
+    for entry in inventory_entries(item_entries):
+        counts[entry['id']] = counts.get(entry['id'], 0) + entry['qty']
     return counts
 
 
 def _owned_counts(owned_ids):
     counts = {}
-    if isinstance(owned_ids, dict):
+    if isinstance(owned_ids, dict) and not isinstance(owned_ids.get('entries'), (list, tuple)):
         for key, value in owned_ids.items():
             iid = _int(key)
             if iid is None or iid <= 0:
@@ -213,6 +266,135 @@ def _owned_counts(owned_ids):
         if iid is not None and iid > 0:
             counts[iid] = counts.get(iid, 0) + 1
     return counts
+
+
+def _owned_state(owned_ids):
+    """Return ``(counts, entries)`` for any supported inventory input.
+
+    ``entries`` preserves client slot boundaries when the caller supplied raw
+    entries; otherwise one synthetic entry per distinct item ID is produced
+    from the ``{id: qty}`` counts.
+    """
+    raw_entries = None
+    if isinstance(owned_ids, dict) and isinstance(owned_ids.get('entries'), (list, tuple)):
+        raw_entries = owned_ids
+    elif isinstance(owned_ids, (list, tuple)) and any(
+            isinstance(item, dict) for item in owned_ids):
+        raw_entries = owned_ids
+    if raw_entries is not None:
+        entries = inventory_entries(raw_entries)
+        counts = {}
+        for entry in entries:
+            counts[entry['id']] = counts.get(entry['id'], 0) + entry['qty']
+        return counts, entries
+    counts = _owned_counts(owned_ids)
+    entries = [{'id': iid, 'qty': counts[iid]} for iid in sorted(counts)]
+    return counts, entries
+
+
+def _tags(catalog, item_id):
+    if not isinstance(catalog, dict):
+        return ()
+    node = catalog.get(item_id)
+    if not isinstance(node, dict):
+        return ()
+    return node.get('tags') or ()
+
+
+def _is_trinket(catalog, item_id):
+    return 'Trinket' in _tags(catalog, item_id)
+
+
+def _is_stackable(catalog, item_id):
+    return 'Consumable' in _tags(catalog, item_id)
+
+
+def _entry_slots(catalog, item_id, qty):
+    """Regular (non-trinket) slots occupied by ``qty`` copies in one entry.
+
+    Trinkets use the separate trinket slot (0 regular slots). Consumables
+    stack up to ``CONSUMABLE_STACK`` per slot. Everything else is
+    non-stackable: each copy consumes a slot.
+    """
+    if qty <= 0:
+        return 0
+    if _is_trinket(catalog, item_id):
+        return 0
+    if _is_stackable(catalog, item_id):
+        return (qty + CONSUMABLE_STACK - 1) // CONSUMABLE_STACK
+    return qty
+
+
+def _added_slots(catalog, counts, adds):
+    """Slots needed to add ``adds`` (``{id: copies}``) to current ``counts``."""
+    extra = 0
+    held = dict(counts)
+    for iid in sorted(adds):
+        qty = adds[iid]
+        if qty <= 0 or _is_trinket(catalog, iid):
+            continue
+        current = held.get(iid, 0)
+        if _is_stackable(catalog, iid):
+            free_room = current % CONSUMABLE_STACK
+            overflow = max(0, qty - free_room)
+            if overflow:
+                extra += (overflow + CONSUMABLE_STACK - 1) // CONSUMABLE_STACK
+        else:
+            extra += qty
+        held[iid] = current + qty
+    return extra
+
+
+def _freed_slots(catalog, counts, removed):
+    """Slots freed by removing ``removed`` (``{id: copies}``) from inventory."""
+    freed = 0
+    held = dict(counts)
+    for iid in sorted(removed):
+        qty = removed[iid]
+        if qty <= 0 or _is_trinket(catalog, iid):
+            continue
+        current = held.get(iid, 0)
+        if current <= 0:
+            continue
+        if _is_stackable(catalog, iid):
+            before = (current + CONSUMABLE_STACK - 1) // CONSUMABLE_STACK
+            remaining = max(0, current - qty)
+            after = (remaining + CONSUMABLE_STACK - 1) // CONSUMABLE_STACK
+            freed += max(0, before - after)
+            held[iid] = remaining
+        else:
+            used = min(qty, current)
+            freed += used
+            held[iid] = current - used
+    return freed
+
+
+def inventory_slots(item_entries, catalog=None):
+    """Compute actual slot usage from preserved client entries.
+
+    ``item_entries`` may be raw live-client entries, an ``inventory_state``
+    dict, a ``{id: qty}`` mapping, or any iterable of IDs. Stack rules and
+    trinket basics are applied. Returns
+    ``{total, used, free, ok, trinkets, entries}`` where ``entries`` echoes
+    the normalized per-slot entries.
+    """
+    counts, entries = _owned_state(item_entries)
+    used = 0
+    trinkets = 0
+    for entry in entries:
+        if _is_trinket(catalog, entry['id']):
+            trinkets += 1
+        else:
+            used += _entry_slots(catalog, entry['id'], entry['qty'])
+    free = max(0, SLOT_COUNT - used)
+    return {
+        'total': SLOT_COUNT,
+        'used': used,
+        'free': free,
+        'ok': free > 0,
+        'trinkets': trinkets,
+        'entries': entries,
+    }
 
 
 def _plan_entries(plan_ids, catalog):
@@ -240,9 +422,26 @@ def _plan_entries(plan_ids, catalog):
     return entries
 
 
-def _is_complete(catalog, item_id, owned):
+def _consume_milestone(catalog, item_id, pool):
+    """Spend one owned copy in ``chain_of(item_id)`` from ``pool``.
+
+    Prefers the plan item itself, then successors in ascending ID order so
+    allocation is deterministic. Returns the consumed ID or ``None``.
+    """
+    chain = chain_of(catalog, item_id)
+    ordered = [item_id] + [candidate for candidate in chain if candidate != item_id]
+    for candidate in ordered:
+        if pool.get(candidate, 0) > 0:
+            pool[candidate] -= 1
+            if pool[candidate] <= 0:
+                del pool[candidate]
+            return candidate
+    return None
+
+
+def _milestone_owned(catalog, item_id, pool):
     for candidate in chain_of(catalog, item_id):
-        if owned.get(candidate, 0) > 0:
+        if pool.get(candidate, 0) > 0:
             return True
     return False
 
@@ -307,70 +506,185 @@ def _analyze(catalog, item_id, owned):
     return remaining, not report['unknown'], report
 
 
-def _component_offers(catalog, target_id, owned, gold):
-    """Every recommendable, not-yet-owned component in the recipe tree of
-    ``target_id`` with the exact remaining gold to acquire it."""
+def _component_offers(catalog, target_id, pool, gold, report):
+    """Offer the next missing copy of every required component.
+
+    Quantity-aware: the target's own allocation report says how many copies
+    of each component still have to be bought, so a recipe needing two Tomes
+    with one owned still offers a second Tome. ``goldToComplete`` is the cost
+    to acquire one further copy given the owned copies already allocated
+    elsewhere in the target recipe.
+    """
+    remaining_pool = dict(pool)
+    for iid, qty in report['consumed'].items():
+        remaining_pool[iid] = max(0, remaining_pool.get(iid, 0) - qty)
     offers = []
-    visited = set()
-    stack = list(catalog[target_id]['from'])
-    while stack:
-        current = stack.pop()
-        if current in visited:
+    for iid in sorted(report['required']):
+        copies = report['required'][iid]
+        if copies <= 0 or iid == target_id:
             continue
-        visited.add(current)
-        node = catalog.get(current)
-        if node is None:
+        node = catalog.get(iid)
+        if node is None or not node['recommendable']:
             continue
-        stack.extend(node['from'])
-        if not node['recommendable']:
-            continue
-        if _is_complete(catalog, current, owned):
-            continue
-        remaining, exact, _report = _analyze(catalog, current, owned)
+        remaining, exact, _report = _analyze(catalog, iid, remaining_pool)
         if remaining is None:
             continue
         offers.append({
-            'id': current,
+            'id': iid,
             'name': node['name'],
             'cost': node['cost'],
             'goldToComplete': remaining,
             'costExact': exact,
+            'copiesNeeded': copies,
             'affordable': bool(exact and gold is not None and gold >= remaining),
         })
     offers.sort(key=lambda offer: (offer['goldToComplete'], offer['id']))
     return offers
 
 
-def _slots(owned):
-    used = len(owned)
-    free = max(0, SLOT_COUNT - used)
-    return {'total': SLOT_COUNT, 'used': used, 'free': free, 'ok': free > 0}
+def _frontier(catalog, target_id, pool, counts, gold, free_slots, offers):
+    """Deterministic feasible component combinations for current gold/slots.
+
+    Enumerates bounded combinations (up to ``FRONTIER_MAX_ITEMS`` copies from
+    a capped candidate list), keeps only combinations that are both
+    affordable and slot-feasible, and reports what each advances with a
+    deterministic re-run of :func:`_analyze`.
+    """
+    candidates = [offer for offer in offers
+                  if offer['costExact'] and offer['cost'] is not None
+                  and offer['goldToComplete'] is not None]
+    candidates = candidates[:FRONTIER_MAX_CANDIDATES]
+    if not candidates or gold is None or gold <= 0:
+        return []
+    found = {}
+    picked = []
+
+    def record():
+        if not picked:
+            return
+        key = tuple(sorted((offer['id'], copies) for offer, copies in picked))
+        if key in found:
+            return
+        adds = {}
+        for offer, copies in picked:
+            adds[offer['id']] = adds.get(offer['id'], 0) + copies
+        slot_cost = _added_slots(catalog, counts, adds)
+        total = sum(offer['goldToComplete'] * copies for offer, copies in picked)
+        if total > gold or slot_cost > free_slots:
+            return
+        combined = dict(pool)
+        for iid, copies in adds.items():
+            combined[iid] = combined.get(iid, 0) + copies
+        after, exact, _report = _analyze(catalog, target_id, combined)
+        found[key] = {
+            'items': [
+                {'id': offer['id'], 'name': offer['name'], 'copies': copies,
+                 'cost': offer['cost'], 'goldToComplete': offer['goldToComplete']}
+                for offer, copies in picked
+            ],
+            'totalCost': total,
+            'slots': slot_cost,
+            'affordable': True,
+            'feasible': True,
+            'targetRemainingAfter': after if exact else None,
+            'completesTarget': bool(exact and after == 0),
+        }
+
+    def visit(start, copies):
+        record()
+        if copies >= FRONTIER_MAX_ITEMS or start >= len(candidates):
+            return
+        for index in range(start, len(candidates)):
+            offer = candidates[index]
+            room = min(max(1, offer.get('copiesNeeded') or 1),
+                       FRONTIER_MAX_ITEMS - copies)
+            for count in range(1, room + 1):
+                picked.append((offer, count))
+                visit(index + 1, copies + count)
+                picked.pop()
+
+    visit(0, 0)
+    ordered = sorted(found.values(), key=lambda item: (
+        item['targetRemainingAfter'] if item['targetRemainingAfter'] is not None
+        else float('inf'),
+        item['totalCost'],
+        tuple((entry['id'], entry['copies']) for entry in item['items']),
+    ))
+    return ordered[:FRONTIER_MAX_COMBOS]
+
+
+def _summary_text(name, remaining, exact, gold, affordable, suggested, gold_short):
+    if remaining is None or not exact:
+        return 'Next recall: cost unknown for %s.' % name
+    if affordable:
+        return 'Next recall: %s — %dg completes it now.' % (name, remaining)
+    if gold is None:
+        return 'Next recall: current gold unavailable. Target remaining: %dg.' % remaining
+    if suggested is not None:
+        copies = suggested.get('copiesNeeded') or 1
+        if copies > 1:
+            advance = 'Adds one of %d required %s copies.' % (copies, suggested['name'])
+        else:
+            advance = 'Completes one required component.'
+        return 'Next recall: %s — %dg. %s Target remaining: %dg.' % (
+            suggested['name'], suggested['goldToComplete'], advance, remaining)
+    short = '' if gold_short is None else ' (%dg short)' % gold_short
+    return 'Next recall: none affordable right now. Target remaining: %dg%s.' % (
+        remaining, short)
 
 
 def next_purchase(owned_ids, plan_ids, available_gold, catalog=None):
     """Deterministic next-buy advice for the first incomplete plan item.
 
-    ``owned_ids`` is an ``{id: qty}`` mapping (as returned by
-    ``inventory_summary``) or any iterable of IDs. ``plan_ids`` is the plan
+    ``owned_ids`` is an ``{id: qty}`` mapping, raw live-client slot entries
+    (preferred: this preserves repeated components and slot boundaries), an
+    ``inventory_state`` dict, or any iterable of IDs. ``plan_ids`` is the plan
     in purchase order as IDs, names, or ``{'id', 'name'}`` dicts (the shape
     returned by ``/api/plan``). ``catalog`` is required for any real math;
     without it the result degrades to ``status='no_catalog'``.
 
-    Returns ``{status, next, alternatives, slots, reasons}``. Every number
-    comes from the catalog; if a component cost is missing the result
-    carries ``costExact=False`` instead of guessing.
+    ``available_gold`` may be fractional; any finite non-negative value is
+    accepted and floored only because catalog costs are whole gold. When the
+    floor changed the value, ``goldRounded`` is true.
+
+    Plan steps are ordered purchases: each step consumes one owned milestone
+    copy, so ``[Long Sword, Long Sword]`` with one owned Sword still asks for
+    a second one. Affordability and post-purchase inventory feasibility are
+    computed separately. Returns ``{status, next, alternatives, frontier,
+    summary, slots, inventory, gold, goldRounded, planProgress, reasons}``.
     """
     if catalog is None:
         catalog = {}
     if not isinstance(catalog, dict):
         catalog = {}
-    owned = _owned_counts(owned_ids)
-    gold = _int(available_gold)
+
+    gold_raw = _gold_value(available_gold)
+    gold = None if gold_raw is None else int(math.floor(gold_raw))
+    gold_rounded = bool(gold_raw is not None and gold_raw != gold)
+    counts, entries = _owned_state(owned_ids)
+    slot_info = inventory_slots({'entries': entries}, catalog)
+    slots = {'total': SLOT_COUNT, 'used': slot_info['used'],
+             'free': slot_info['free'], 'ok': slot_info['ok']}
+    inventory = {
+        'entries': [{
+            'id': entry['id'],
+            'qty': entry['qty'],
+            'stackable': _is_stackable(catalog, entry['id']),
+            'trinket': _is_trinket(catalog, entry['id']),
+        } for entry in entries],
+        'trinkets': slot_info['trinkets'],
+    }
     result = {
         'status': 'ok',
         'next': None,
         'alternatives': [],
-        'slots': _slots(owned),
+        'frontier': [],
+        'summary': None,
+        'slots': slots,
+        'inventory': inventory,
+        'gold': gold,
+        'goldRaw': gold_raw,
+        'goldRounded': gold_rounded,
         'reasons': [],
     }
     if not catalog:
@@ -384,50 +698,78 @@ def next_purchase(owned_ids, plan_ids, available_gold, catalog=None):
         result['reasons'].append('no build plan')
         return result
 
+    pool = dict(counts)
     unknown_plan = []
     unsupported_plan = []
     saw_known = False
     target_index = None
+    completed_steps = 0
     for index, entry in enumerate(plan):
         iid = entry['id']
         if iid is None:
             if entry['name']:
                 unknown_plan.append(entry['name'])
             continue
-        if iid not in catalog:
+        node = catalog.get(iid)
+        if node is None:
             unknown_plan.append(entry['name'] or str(iid))
             continue
-        if not catalog[iid]['recommendable']:
+        if not node['recommendable']:
             unsupported_plan.append(entry['name'] or str(iid))
             continue
         saw_known = True
-        if not _is_complete(catalog, iid, owned):
+        if target_index is not None:
+            continue
+        if _consume_milestone(catalog, iid, pool) is not None:
+            completed_steps += 1
+        else:
             target_index = index
-            break
+
+    progress = {'completed': completed_steps,
+                'position': None if target_index is None else target_index + 1,
+                'total': len(plan)}
 
     if target_index is None:
         result['status'] = 'plan_complete' if saw_known else 'unknown_item'
+        result['planProgress'] = progress
+        reasons = []
         if saw_known:
-            result['reasons'].append('plan complete')
-        for name in unknown_plan[:3]:
-            result['reasons'].append('unknown plan item: %s' % name)
-        for name in unsupported_plan[:3]:
-            result['reasons'].append('unsupported for Summoner\'s Rift: %s' % name)
-        if not result['reasons']:
-            result['reasons'].append('no known plan items')
+            reasons.append('plan complete')
+        for unknown_name in unknown_plan[:3]:
+            reasons.append('unknown plan item: %s' % unknown_name)
+        for unsupported_name in unsupported_plan[:3]:
+            reasons.append('unsupported for Summoner\'s Rift: %s' % unsupported_name)
+        if not reasons:
+            reasons.append('no known plan items')
+        if gold_rounded:
+            reasons.insert(0, 'current gold %sg rounded down to %dg'
+                              ' (item costs are whole gold)' % (gold_raw, gold))
+        result['reasons'] = reasons
+        result['summary'] = {
+            'nextRecall': None,
+            'targetRemaining': 0 if saw_known else None,
+            'goldShort': None,
+            'alternatives': [],
+            'text': 'Plan complete.' if saw_known else 'No known plan items.',
+        }
         return result
 
     target = plan[target_index]
     node = catalog[target['id']]
     name = node['name'] or target['name'] or str(target['id'])
-    remaining, exact, report = _analyze(catalog, target['id'], owned)
+    remaining, exact, report = _analyze(catalog, target['id'], pool)
     affordable_now = bool(
         exact and remaining is not None and gold is not None and gold >= remaining)
     gold_short = None
     if remaining is not None and gold is not None:
         gold_short = max(0, remaining - gold)
 
-    components = _component_offers(catalog, target['id'], owned, gold)
+    components = _component_offers(catalog, target['id'], pool, gold, report)
+    for offer in components:
+        add = _added_slots(catalog, counts, {offer['id']: 1})
+        offer['slotsAfter'] = slots['used'] + add
+        offer['feasibleNow'] = slots['used'] + add <= SLOT_COUNT
+
     affordable_components = [offer for offer in components if offer['affordable']]
     cheapest = []
     if affordable_components:
@@ -447,6 +789,33 @@ def next_purchase(owned_ids, plan_ids, available_gold, catalog=None):
             'qty': report['consumed'][iid],
         })
 
+    consumed_slots = _freed_slots(catalog, counts, report['consumed'])
+    target_slot_cost = _entry_slots(catalog, target['id'], 1)
+    slots_after_complete = max(0, slots['used'] - consumed_slots + target_slot_cost)
+    feasible_complete = slots_after_complete <= SLOT_COUNT
+
+    suggested = None
+    for offer in components:
+        if offer['affordable'] and offer['feasibleNow']:
+            suggested = offer
+            break
+
+    if affordable_now:
+        action = 'complete'
+        slots_after_action = slots_after_complete
+        feasible_now = feasible_complete
+        slot_delta = target_slot_cost - consumed_slots
+    elif suggested is not None:
+        action = 'component'
+        slots_after_action = suggested['slotsAfter']
+        feasible_now = suggested['feasibleNow']
+        slot_delta = slots_after_action - slots['used']
+    else:
+        action = 'none'
+        slots_after_action = slots['used']
+        feasible_now = False
+        slot_delta = 0
+
     result['next'] = {
         'id': target['id'],
         'name': name,
@@ -455,6 +824,22 @@ def next_purchase(owned_ids, plan_ids, available_gold, catalog=None):
         'costExact': exact,
         'affordableNow': affordable_now,
         'goldShort': gold_short,
+        'position': target_index + 1,
+        'action': action,
+        'feasibleNow': feasible_now,
+        'slotsAfter': slots_after_action,
+        'slotsAfterComplete': slots_after_complete,
+        'slotsFreed': consumed_slots,
+        'slotDelta': slot_delta,
+        'suggested': None if suggested is None else {
+            'id': suggested['id'],
+            'name': suggested['name'],
+            'cost': suggested['cost'],
+            'goldToComplete': suggested['goldToComplete'],
+            'copiesNeeded': suggested['copiesNeeded'],
+            'feasibleNow': suggested['feasibleNow'],
+            'slotsAfter': suggested['slotsAfter'],
+        },
         'components': components,
         'cheapestAffordable': [{
             'id': offer['id'],
@@ -472,9 +857,9 @@ def next_purchase(owned_ids, plan_ids, available_gold, catalog=None):
             continue
         if not catalog[iid]['recommendable']:
             continue
-        if _is_complete(catalog, iid, owned):
+        if _milestone_owned(catalog, iid, pool):
             continue
-        alt_remaining, alt_exact, _alt_report = _analyze(catalog, iid, owned)
+        alt_remaining, alt_exact, _alt_report = _analyze(catalog, iid, pool)
         if alt_remaining is None or not alt_exact:
             continue
         if gold is None or alt_remaining > gold:
@@ -491,6 +876,9 @@ def next_purchase(owned_ids, plan_ids, available_gold, catalog=None):
             break
 
     reasons = []
+    if gold_rounded:
+        reasons.append('current gold %sg rounded down to %dg'
+                       ' (item costs are whole gold)' % (gold_raw, gold))
     for unknown_name in unknown_plan[:3]:
         reasons.append('unknown plan item: %s' % unknown_name)
     for unsupported_name in unsupported_plan[:3]:
@@ -504,6 +892,8 @@ def next_purchase(owned_ids, plan_ids, available_gold, catalog=None):
             reasons.append('ready to finish %s' % name)
         if affordable_now:
             reasons.append('%s affordable now' % name)
+            if not feasible_complete:
+                reasons.append('no slot available even after combining components')
         elif gold is None:
             reasons.append('current gold unavailable')
         elif gold_short is not None:
@@ -511,12 +901,50 @@ def next_purchase(owned_ids, plan_ids, available_gold, catalog=None):
     for offer in cheapest:
         reasons.append('component %s affordable now (%dg)' % (
             offer['name'], offer['goldToComplete']))
-    if not result['slots']['ok']:
+    if not slots['ok']:
         reasons.append('no free inventory slot')
     for alternative in alternatives:
         reasons.append('alternative: %s affordable now (%dg)' % (
             alternative['name'], alternative['goldToComplete']))
 
+    frontier = _frontier(catalog, target['id'], pool, counts, gold,
+                         slots['free'], components)
+    summary_text = _summary_text(name, remaining, exact, gold, affordable_now,
+                                 suggested, gold_short)
+    if alternatives:
+        summary_text += ' Alternatives: ' + ', '.join(
+            '%s (%dg)' % (alt['name'], alt['goldToComplete']) for alt in alternatives) + '.'
+    frontier_gold = None
+    if frontier:
+        frontier_gold = frontier[0]['targetRemainingAfter']
+
     result['alternatives'] = alternatives
+    result['frontier'] = frontier
+    result['planProgress'] = progress
+    result['summary'] = {
+        'nextRecall': None if action == 'none' and gold is not None else {
+            'kind': action,
+            'id': suggested['id'] if action == 'component' else target['id'],
+            'name': suggested['name'] if action == 'component' else name,
+            'cost': suggested['goldToComplete'] if action == 'component' else remaining,
+            'affordable': affordable_now or action == 'component',
+            'feasible': feasible_now,
+        },
+        'targetRemaining': remaining if exact else None,
+        'targetRemainingAfterBestCombo': frontier_gold,
+        'goldShort': gold_short,
+        'goldRounded': gold_rounded,
+        'alternatives': [{
+            'id': alt['id'],
+            'name': alt['name'],
+            'goldToComplete': alt['goldToComplete'],
+        } for alt in alternatives],
+        'text': summary_text,
+    }
+    # ``/api/purchase`` spreads ``next`` through unchanged, so mirror these
+    # two structures there while keeping the top-level fields for direct
+    # module callers.
+    result['next']['frontier'] = result['frontier']
+    result['next']['summary'] = result['summary']
     result['reasons'] = reasons
     return result

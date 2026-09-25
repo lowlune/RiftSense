@@ -272,5 +272,112 @@ class ServerEndpointTests(unittest.TestCase):
         self.assertEqual(body['error'], 'invalid_body')
 
 
+class TrendsAuditTests(unittest.TestCase):
+    """Regressions for B8 (unknown usage), B9/B10 (coverage and reminder
+    naming) and the 'coverage front and centre' requirement."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        TIMELINE.configure(os.path.join(self.tmp.name, 'timeline.db'))
+        TIMELINE.init_db()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_objective_reminders_renamed_with_outcomes_separate(self):
+        TIMELINE.ensure_game('s-obj', champ='Ahri')
+        TIMELINE.record_event('objective', 'dragon up soon', {'secondsLeft': 30},
+                              t_game=300, session_id='s-obj')
+        TIMELINE.record_event('objective', 'baron up soon', {'secondsLeft': 60},
+                              t_game=1100, session_id='s-obj')
+        TIMELINE.record_event('objective', 'dragon killed', {'outcome': True},
+                              t_game=700, session_id='s-obj')
+        TIMELINE.end_game('s-obj')
+
+        report = trends.build_trends()
+        self.assertEqual(report['objectives'], report['objectiveReminders'])
+        self.assertEqual(report['objectiveReminders']['kind'], 'reminder')
+        self.assertEqual(report['objectiveReminders']['total'], 2)
+        reminders = {c['label']: c['count']
+                     for c in report['objectiveReminders']['counts']}
+        self.assertEqual(reminders['dragon'], 1)
+        self.assertEqual(reminders['baron'], 1)
+        self.assertEqual(report['objectiveOutcomes']['kind'], 'outcome')
+        self.assertEqual(report['objectiveOutcomes']['total'], 1)
+        outcomes = {c['label']: c['count']
+                    for c in report['objectiveOutcomes']['counts']}
+        self.assertEqual(outcomes['dragon'], 1)
+        self.assertNotIn('killed', [c['label']
+                                    for c in report['objectiveReminders']['counts']])
+
+    def test_unknown_inference_usage_renders_null_not_zero(self):
+        game = TIMELINE.ensure_game('s-inf', champ='Ahri')
+        TIMELINE.record_event('death', 'died 2:00', t_game=120, session_id='s-inf')
+        TIMELINE.end_game('s-inf')
+        con = sqlite3.connect(TIMELINE.DB_PATH)
+        try:
+            con.execute(
+                'INSERT INTO inference (game_id, request_id, started_at, finished_at, status,'
+                ' tokens_in, tokens_out, cost) VALUES (?,?,?,?,?,?,?,?)',
+                (game['id'], 'unknown-1', 1, 2, 'ok', None, None, None))
+            con.execute(
+                'INSERT INTO inference (game_id, request_id, started_at, finished_at, status,'
+                ' tokens_in, tokens_out, cost) VALUES (?,?,?,?,?,?,?,?)',
+                (game['id'], 'known-1', 1, 2, 'ok', 100, 25, 0.02))
+            con.commit()
+        finally:
+            con.close()
+
+        report = trends.build_trends()
+        self.assertEqual(report['inference']['requests'], 2)
+        self.assertIsNone(report['inference']['tokensIn'])
+        self.assertIsNone(report['inference']['tokensOut'])
+        self.assertIsNone(report['inference']['cost'])
+        self.assertIn('inference:tokensIn', report['unavailable'])
+        self.assertIn('inference:tokensOut', report['unavailable'])
+        self.assertIn('inference:cost', report['unavailable'])
+        self.assertEqual(report['status'], 'partial')
+
+    def test_fully_unknown_inference_usage_is_null_never_zero(self):
+        TIMELINE.ensure_game('s-inf2', champ='Ahri')
+        TIMELINE.end_game('s-inf2')
+        con = sqlite3.connect(TIMELINE.DB_PATH)
+        try:
+            con.execute(
+                'INSERT INTO inference (game_id, request_id, started_at, finished_at, status,'
+                ' tokens_in, tokens_out, cost) VALUES (?,?,?,?,?,?,?,?)',
+                (1, 'unknown-2', 1, 2, 'failed', None, None, None))
+            con.commit()
+        finally:
+            con.close()
+
+        report = trends.build_trends()
+        self.assertIsNone(report['inference']['tokensIn'])
+        self.assertIsNone(report['inference']['tokensOut'])
+        self.assertIsNone(report['inference']['cost'])
+        self.assertNotEqual(report['inference']['tokensIn'], 0)
+
+    def test_coverage_section_keeps_sample_size_visible(self):
+        report = trends.build_trends()
+        self.assertEqual(report['coverage']['status'], 'no_games')
+        self.assertEqual(report['coverage']['sampleSize'], 0)
+
+        TIMELINE.ensure_game('s-cov', champ='Ahri')
+        TIMELINE.end_game('s-cov')
+        report2 = trends.build_trends()
+        self.assertEqual(report2['coverage']['status'], 'unavailable')
+        self.assertEqual(report2['coverage']['gamesWithCoverage'], 0)
+        self.assertEqual(report2['coverage']['sampleSize'], 1)
+        self.assertEqual(report2['games']['played'], 1)
+
+        fake = lambda game_id: {'intervals': [[0, 1800]], 'adequate': True,
+                                'observedRatio': 0.9}
+        with mock.patch.object(trends.timeline, 'coverage', fake, create=True):
+            report3 = trends.build_trends()
+        self.assertEqual(report3['coverage']['status'], 'ok')
+        self.assertEqual(report3['coverage']['gamesWithCoverage'], 1)
+        self.assertEqual(report3['coverage']['adequateGames'], 1)
+
+
 if __name__ == '__main__':
     unittest.main()
