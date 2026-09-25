@@ -3,7 +3,10 @@ param(
     [int]$IdleSeconds = 20,
     [int]$PollSeconds = 5,
     [int]$TickTimeoutSeconds = 180,
-    [int]$DeathTimeoutSeconds = 90
+    [int]$DeathTimeoutSeconds = 90,
+    [int]$MaxInferencesPerGame = 40,
+    [int]$MinSecondsBetweenInferences = 15,
+    [string]$TimelineUrl = 'http://127.0.0.1:7777/api/events'
 )
 
 if ($PollSeconds -lt 1) { $PollSeconds = 5 }
@@ -11,6 +14,8 @@ if ($IdleSeconds -lt 1) { $IdleSeconds = 20 }
 if ($TickSeconds -lt 1) { $TickSeconds = 60 }
 if ($TickTimeoutSeconds -lt 5) { $TickTimeoutSeconds = 180 }
 if ($DeathTimeoutSeconds -lt 5) { $DeathTimeoutSeconds = 90 }
+if ($MaxInferencesPerGame -lt 1) { $MaxInferencesPerGame = 40 }
+if ($MinSecondsBetweenInferences -lt 0) { $MinSecondsBetweenInferences = 15 }
 
 $ErrorActionPreference = 'Continue'
 $script:dir = $PSScriptRoot
@@ -79,6 +84,14 @@ $script:SnapHistoryLimit = 12
 $script:EventHistoryLimit = 24
 $script:PreDeathWindowSeconds = 90
 $script:PreDeathEventLimit = 6
+$script:inferencesThisGame = 0
+$script:lastInferenceAt = [datetime]::MinValue
+$script:tickRequestId = ''
+$script:deathRequestId = ''
+$script:lastItemSignature = ''
+$script:lastObjectiveKey = ''
+$script:forceTick = $false
+$script:budgetExhausted = $false
 
 function Stop-ProcessTree {
     param($Process)
@@ -146,6 +159,109 @@ function Publish-Envelope {
     }
     if ($Extra) { foreach ($k in $Extra.Keys) { $obj[$k] = $Extra[$k] } }
     Publish-Text -Path $Path -Text ($obj | ConvertTo-Json -Compress -Depth 5)
+}
+
+function Send-TimelineEvent {
+    param(
+        [string]$Kind,
+        [string]$Label = '',
+        [hashtable]$Data = $null,
+        [string]$RequestId = '',
+        [string]$Status = '',
+        [double]$GameTime = -1
+    )
+    try {
+        $gt = $script:lastGameTime
+        if ($GameTime -ge 0) { $gt = $GameTime }
+        $body = @{
+            kind = $Kind
+            label = $Label
+            sessionId = $script:sessionId
+            champ = $script:sessionChamp
+            mode = $script:sessionMode
+            gameTime = $gt
+        }
+        if ($script:sessionMap) { try { $body.map = [int]$script:sessionMap } catch { } }
+        if ($Data) { $body.data = $Data }
+        if ($RequestId) { $body.requestId = $RequestId }
+        if ($Status) { $body.status = $Status }
+        $json = $body | ConvertTo-Json -Depth 4 -Compress
+        $null = Invoke-RestMethod -Uri $TimelineUrl -Method Post -ContentType 'application/json' -Body $json -TimeoutSec 3 -ErrorAction Stop
+    } catch { }
+}
+
+function Get-InferenceBudget {
+    $remaining = [math]::Max(0, $MaxInferencesPerGame - $script:inferencesThisGame)
+    return [pscustomobject]@{ Used = $script:inferencesThisGame; Limit = $MaxInferencesPerGame; Remaining = $remaining }
+}
+
+function Request-InferenceSlot {
+    param([string]$Kind, [switch]$IgnoreCooldown)
+    $budget = Get-InferenceBudget
+    if ($budget.Remaining -le 0) {
+        if (-not $script:budgetExhausted) {
+            $script:budgetExhausted = $true
+            Write-Host "[$script:ts] Inference budget exhausted ($MaxInferencesPerGame this game) - coaching paused, detection continues." -ForegroundColor Yellow
+            Send-TimelineEvent -Kind 'status' -Label ("budget exhausted ({0}/{1})" -f $budget.Used, $budget.Limit) -Data @{ used = $budget.Used; limit = $budget.Limit }
+        }
+        return $null
+    }
+    if (-not $IgnoreCooldown) {
+        if (([datetime]::Now - $script:lastInferenceAt).TotalSeconds -lt $MinSecondsBetweenInferences) { return $null }
+    }
+    $script:inferencesThisGame++
+    $script:lastInferenceAt = [datetime]::Now
+    $rid = [guid]::NewGuid().ToString('N')
+    Send-TimelineEvent -Kind 'inference' -RequestId $rid -Status 'started' -Label $Kind
+    return $rid
+}
+
+function Complete-Inference {
+    param([string]$RequestId, [string]$Status, [hashtable]$Data = $null)
+    if (-not $RequestId) { return }
+    Send-TimelineEvent -Kind 'inference' -RequestId $RequestId -Status $Status -Data $Data
+}
+
+function Get-NextObjective {
+    param($Data, [double]$GameTime)
+    $dragonCount = 0
+    $lastDragon = -1.0
+    $lastBaron = -1.0
+    if ($Data.events -and $Data.events.Events) {
+        foreach ($e in $Data.events.Events) {
+            $n = "$($e.EventName)"
+            if ($n -eq 'DragonKill') {
+                $dragonCount++
+                $t = [double]$e.EventTime
+                if ($t -gt $lastDragon) { $lastDragon = $t }
+            } elseif ($n -eq 'BaronKill') {
+                $t = [double]$e.EventTime
+                if ($t -gt $lastBaron) { $lastBaron = $t }
+            }
+        }
+    }
+    $dragonSpawn = 300.0
+    if ($lastDragon -ge 0) {
+        $gap = 300.0
+        if ($dragonCount -ge 4) { $gap = 360.0 }
+        $dragonSpawn = $lastDragon + $gap
+    }
+    $baronSpawn = 1200.0
+    if ($lastBaron -ge 0) { $baronSpawn = $lastBaron + 360.0 }
+    $best = $null
+    $candidates = @(
+        @{ Key = ("dragon:{0}" -f [int]$dragonSpawn); Label = 'dragon up soon'; Spawn = $dragonSpawn },
+        @{ Key = ("baron:{0}" -f [int]$baronSpawn); Label = 'baron up soon'; Spawn = $baronSpawn }
+    )
+    foreach ($c in $candidates) {
+        $left = [double]$c.Spawn - $GameTime
+        if (($left -ge -30) -and ($left -le 30)) {
+            if (($null -eq $best) -or ($left -lt $best.SecondsLeft)) {
+                $best = [pscustomobject]@{ Key = $c.Key; Label = $c.Label; SecondsLeft = $left }
+            }
+        }
+    }
+    return $best
 }
 
 function Test-SamePlayer {
@@ -463,6 +579,14 @@ function Start-Session {
     $script:snapHistory = New-Object 'System.Collections.Generic.List[object]'
     $script:eventHistory = New-Object 'System.Collections.Generic.List[object]'
     $script:eventKeys = @{}
+    $script:inferencesThisGame = 0
+    $script:lastInferenceAt = [datetime]::MinValue
+    $script:tickRequestId = ''
+    $script:deathRequestId = ''
+    $script:lastItemSignature = ''
+    $script:lastObjectiveKey = ''
+    $script:forceTick = $false
+    $script:budgetExhausted = $false
     if ($Data.events -and $Data.events.Events) {
         foreach ($e in $Data.events.Events) {
             Add-GameEvent -Event $e
@@ -478,10 +602,12 @@ function Start-Session {
     Publish-Envelope -Path $script:coachMeta -Kind 'coach' -Status 'starting' -Text '' -ErrorText '' -ObservedGameTime $g.gameTime -Seq 0
     Publish-Text -Path $script:deathFile -Text ''
     Publish-Envelope -Path $script:deathMeta -Kind 'death' -Status 'idle' -Text '' -ErrorText '' -ObservedGameTime $g.gameTime -Seq 0
+    Send-TimelineEvent -Kind 'game_start' -Label ("{0} {1}" -f $Champ, $g.gameMode) -Data @{ champ = $Champ; mode = "$($g.gameMode)"; map = [int]$g.mapNumber } -GameTime ([double]$g.gameTime)
 }
 
 function Close-Session {
     Stop-Workers
+    Send-TimelineEvent -Kind 'game_end' -Label 'game closed'
     $script:activeDeath = $null
     $script:deathState = 'idle'
     $script:sessionActive = $false
@@ -509,10 +635,13 @@ function New-DeathRecord {
     }
     $script:deathState = 'detected'
     $script:deathRetryAt = [datetime]::MinValue
+    Send-TimelineEvent -Kind 'death' -Label ("died {0} to {1}" -f $clock, $Killer) -Data @{ clock = $clock; killer = $Killer; killedByChampion = [bool]$KilledByChampion } -GameTime $Time
 }
 
 function Handle-DeathFailure {
     param([string]$Reason)
+    Complete-Inference -RequestId $script:deathRequestId -Status 'failed' -Data @{ reason = $Reason }
+    $script:deathRequestId = ''
     $script:deathProc = $null
     $script:deathWatch = $null
     $script:deathState = 'failed'
@@ -535,6 +664,20 @@ function Handle-DeathFailure {
 function Start-DeathWorker {
     $ad = $script:activeDeath
     if (-not $ad) { return }
+    $rid = Request-InferenceSlot -Kind 'death' -IgnoreCooldown
+    if (-not $rid) {
+        Write-Host "[$script:ts] Inference budget exhausted - death report for $($ad.Clock) unavailable." -ForegroundColor Yellow
+        $script:deathState = 'failed'
+        $ad.State = 'failed'
+        $failText = ("DIED: {0} to {1} - report unavailable (inference budget exhausted)" -f $ad.Clock, $ad.Killer)
+        Publish-Text -Path $script:deathFile -Text $failText
+        Publish-Envelope -Path $script:deathMeta -Kind 'death' -Status 'failed' -Text $failText -ErrorText 'budget exhausted' -ObservedGameTime $ad.GameTime -Seq $ad.Seq -Extra @{ clock = $ad.Clock; killer = $ad.Killer; eventTime = $ad.Time; killedByChampion = [bool]$ad.KilledByChampion }
+        $script:processedDeathKeys[$ad.Key] = $true
+        $script:lastDeathT = [math]::Max([double]$script:lastDeathT, [double]$ad.Time)
+        $script:activeDeath = $null
+        return
+    }
+    $script:deathRequestId = $rid
     $ad.Attempts = [int]$ad.Attempts + 1
     $ad.State = 'queued'
     $script:deathState = 'queued'
@@ -560,6 +703,8 @@ function Start-DeathWorker {
 
 function Handle-TickFailure {
     param([string]$Reason)
+    Complete-Inference -RequestId $script:tickRequestId -Status 'failed' -Data @{ reason = $Reason }
+    $script:tickRequestId = ''
     $lastGood = Read-FileText $script:coachFile
     if (-not $lastGood.Trim()) {
         $lastGood = ("(coach tick failed: {0})" -f $Reason)
@@ -581,6 +726,16 @@ function Handle-TickFailure {
 }
 
 function Start-TickWorker {
+    $rid = Request-InferenceSlot -Kind 'tick'
+    if (-not $rid) {
+        if ((Get-InferenceBudget).Remaining -le 0) {
+            $script:nextTickAt = [datetime]::Now.AddHours(1)
+        } else {
+            $script:nextTickAt = [datetime]::Now.AddSeconds([math]::Max(5, $MinSecondsBetweenInferences))
+        }
+        return
+    }
+    $script:tickRequestId = $rid
     $script:tickSnapshot = [pscustomobject]@{ Session = $script:sessionId; Seq = $script:seq; GameTime = $script:lastGameTime }
     Write-Host "[$script:ts] Tick started..." -ForegroundColor Cyan
     $tickPrompt = 'Live tick. The live game data and your build intent are included below - answer directly from them. Output up to 4 hidden reasoning lines first (>>), then the ===COACH=== readout exactly per your format.'
@@ -604,6 +759,8 @@ function Update-Workers {
                 $script:tickProc = $null
                 $script:tickWatch = $null
                 $script:tickSnapshot = $null
+                Complete-Inference -RequestId $script:tickRequestId -Status 'timeout'
+                $script:tickRequestId = ''
                 Handle-TickFailure -Reason ("timed out after {0}s" -f $TickTimeoutSeconds)
             }
         } else {
@@ -621,6 +778,8 @@ function Update-Workers {
             $snap = $script:tickSnapshot
             $sameSession = ($snap -and ("$($snap.Session)" -eq $script:sessionId))
             if ($valid -and $sameSession) {
+                Complete-Inference -RequestId $script:tickRequestId -Status 'ok'
+                $script:tickRequestId = ''
                 Publish-Text -Path $script:coachFile -Text $body
                 Publish-Envelope -Path $script:coachMeta -Kind 'coach' -Status 'ok' -Text $body -ErrorText '' -ObservedGameTime $snap.GameTime -Seq $snap.Seq
                 $script:coachSessionId = $script:sessionId
@@ -636,6 +795,8 @@ function Update-Workers {
                 if ($code -ne 0) { $reason = "exit code $code" }
                 elseif (-not $body) { $reason = 'missing or empty ===COACH=== block' }
                 if (-not $sameSession) { $reason = 'stale result from a previous session' }
+                Complete-Inference -RequestId $script:tickRequestId -Status 'failed' -Data @{ reason = $reason }
+                $script:tickRequestId = ''
                 Handle-TickFailure -Reason $reason
             }
         }
@@ -649,6 +810,8 @@ function Update-Workers {
                 Stop-ProcessTree $script:deathProc
                 $script:deathProc = $null
                 $script:deathWatch = $null
+                Complete-Inference -RequestId $script:deathRequestId -Status 'timeout'
+                $script:deathRequestId = ''
                 Handle-DeathFailure -Reason ("timed out after {0}s" -f $DeathTimeoutSeconds)
             }
         } else {
@@ -668,6 +831,8 @@ function Update-Workers {
             $script:deathProc = $null
             $script:deathWatch = $null
             if ($valid -and $sameSession) {
+                Complete-Inference -RequestId $script:deathRequestId -Status 'ok'
+                $script:deathRequestId = ''
                 $parsed = ConvertFrom-DeathReport -Text $body
                 Publish-Text -Path $script:deathFile -Text $body
                 Publish-Envelope -Path $script:deathMeta -Kind 'death' -Status 'ok' -Text $body -ErrorText '' -ObservedGameTime $ad.GameTime -Seq $ad.Seq -Extra @{
@@ -697,6 +862,8 @@ function Update-Workers {
                 if ($code -ne 0) { $reason = "exit code $code" }
                 elseif (-not $body) { $reason = 'missing or empty ===DEATH=== block' }
                 if (-not $sameSession) { $reason = 'stale result from a previous session' }
+                Complete-Inference -RequestId $script:deathRequestId -Status 'failed' -Data @{ reason = $reason }
+                $script:deathRequestId = ''
                 Handle-DeathFailure -Reason $reason
             }
         }
@@ -837,6 +1004,28 @@ try {
         Add-GameSnapshot -Data $d -GameTime $gt -Seq $script:seq
         Add-GameEvents -Data $d
 
+        $sigParts = @()
+        if ($me -and $me.items) {
+            foreach ($it in $me.items) {
+                $cnt = 1
+                if ($null -ne $it.count) { try { $cnt = [int]$it.count } catch { $cnt = 1 } }
+                $sigParts += ("{0}x{1}" -f $it.itemID, $cnt)
+            }
+        }
+        $sig = (($sigParts | Sort-Object) -join ',')
+        if ($script:lastItemSignature -and ($sig -ne $script:lastItemSignature)) {
+            Send-TimelineEvent -Kind 'item' -Label ("inventory changed: {0}" -f $sig)
+            $script:forceTick = $true
+        }
+        $script:lastItemSignature = $sig
+
+        $nextObj = Get-NextObjective -Data $d -GameTime $gt
+        if ($nextObj -and ($nextObj.Key -ne $script:lastObjectiveKey)) {
+            $script:lastObjectiveKey = $nextObj.Key
+            Send-TimelineEvent -Kind 'objective' -Label $nextObj.Label -Data @{ secondsLeft = [int]$nextObj.SecondsLeft }
+            $script:forceTick = $true
+        }
+
         Update-Workers
 
         $bestKey = ''
@@ -872,7 +1061,8 @@ try {
             }
         }
 
-        if (-not $script:tickProc -and ([datetime]::Now -ge $script:nextTickAt)) {
+        if (-not $script:tickProc -and (([datetime]::Now -ge $script:nextTickAt) -or $script:forceTick)) {
+            $script:forceTick = $false
             Start-TickWorker
         }
 

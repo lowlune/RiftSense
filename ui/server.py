@@ -9,6 +9,7 @@ import tempfile
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 
@@ -24,6 +25,10 @@ try:
     import purchase
 except ImportError:  # package-style import (python3 -m ui.server)
     from . import purchase
+try:
+    import timeline
+except ImportError:  # package-style import (python3 -m ui.server)
+    from . import timeline
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(BASE)
@@ -1084,6 +1089,50 @@ def read_death_structured(now=None):
     }
 
 
+def ingest_event(payload):
+    kind = str(payload.get('kind') or '').strip()
+    session_id = payload.get('sessionId') or payload.get('session_id')
+    t_game = payload.get('tGame', payload.get('gameTime'))
+    if kind == 'advice':
+        text = str(payload.get('text') or '').strip()
+        if not text:
+            raise ValueError('advice text required')
+        return timeline.record_advice(payload.get('adviceKind') or 'coach', text,
+                                      t_game=t_game, session_id=session_id,
+                                      meta=payload.get('meta'))
+    if kind == 'inference':
+        return timeline.record_inference(payload.get('requestId') or '',
+                                         status=payload.get('status') or 'started',
+                                         t_game=t_game, session_id=session_id,
+                                         started_at=payload.get('startedAt'),
+                                         finished_at=payload.get('finishedAt'),
+                                         tokens_in=payload.get('tokensIn') or 0,
+                                         tokens_out=payload.get('tokensOut') or 0,
+                                         cost=payload.get('cost') or 0.0)
+    if not kind:
+        raise ValueError('kind required')
+    return timeline.record_event(kind, label=payload.get('label'), payload=payload.get('data'),
+                                 t_game=t_game, session_id=session_id,
+                                 champ=payload.get('champ'), mode=payload.get('mode'),
+                                 map_number=payload.get('map'))
+
+
+def build_timeline(limit=50):
+    try:
+        return timeline.recent(limit)
+    except Exception as ex:
+        return {'ok': False, 'status': 'timeline_error',
+                'error': type(ex).__name__, 'message': str(ex)}
+
+
+def build_timeline_current():
+    try:
+        return timeline.current()
+    except Exception as ex:
+        return {'ok': False, 'status': 'timeline_error',
+                'error': type(ex).__name__, 'message': str(ex)}
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     def _send(self, payload, ctype='application/json; charset=utf-8', code=200):
         if not isinstance(payload, (bytes, bytearray)):
@@ -1142,12 +1191,39 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send(plan, code=500 if plan.get('status') == 'read_error' else 200)
         elif path == '/api/purchase':
             self._send(build_purchase())
+        elif path == '/api/timeline':
+            limit = 50
+            if '?' in self.path:
+                query = urllib.parse.parse_qs(self.path.split('?', 1)[1])
+                try:
+                    limit = int((query.get('limit') or ['50'])[0])
+                except (TypeError, ValueError):
+                    limit = 50
+            self._send(build_timeline(limit))
+        elif path == '/api/timeline/current':
+            self._send(build_timeline_current())
         elif path == '/api/highlight':
             names = [n for n in sorted(ITEMS.keys(), key=len, reverse=True)
                      if len(n) >= 4 and n not in ('Ward', 'Wards')]
             self._send({'items': names})
         else:
             self.send_error(404)
+
+    def do_POST(self):
+        path = self.path.split('?', 1)[0].rstrip('/')
+        try:
+            if path != '/api/events':
+                self._send({'ok': False, 'error': 'not_found'}, code=404)
+                return
+            length = int(self.headers.get('Content-Length') or 0)
+            if length <= 0 or length > 65536:
+                raise ValueError('invalid body length')
+            payload = json.loads(self.rfile.read(length).decode('utf-8'))
+            if not isinstance(payload, dict):
+                raise ValueError('body must be a JSON object')
+            self._send(ingest_event(payload))
+        except Exception as ex:
+            self._send({'ok': False, 'error': type(ex).__name__, 'message': str(ex)}, code=400)
 
     def log_message(self, fmt, *args):
         pass

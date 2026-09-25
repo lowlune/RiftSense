@@ -196,6 +196,19 @@
   .kda .gold { color: var(--gold); }
 
   .eventsline { grid-column: 1 / -1; display: flex; gap: 14px; white-space: nowrap; overflow: hidden; font-size: 11px; color: var(--dim); padding: 5px 16px 6px; border-top: 1px solid rgba(255,255,255,.06); mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); }
+  .tlstrip { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 0 6px; font-size: 10.5px; color: var(--dim); min-height: 15px; }
+  .tlstrip .tllabel { display: flex; align-items: center; gap: 5px; font-size: 9px; font-weight: 700; letter-spacing: .16em; color: var(--gold-dim); cursor: pointer; user-select: none; white-space: nowrap; }
+  .tlstrip .tllabel:hover { color: var(--gold); }
+  .tlstrip .tlbudget b { color: var(--gold); font-family: "Cascadia Mono", Consolas, monospace; font-weight: 600; }
+  .tlstrip .tlbudget i { font-style: normal; color: var(--dim); }
+  .tlstrip .tllist { display: none; }
+  .tlstrip.open { flex-wrap: wrap; }
+  .tlstrip.open .tllist { display: block; flex-basis: 100%; max-height: 62px; overflow-y: auto; white-space: normal; padding: 2px 0 4px; border-top: 1px dashed rgba(255,255,255,.08); margin-top: 2px; }
+  .tlentry { display: inline-block; margin-right: 12px; }
+  .tlentry b { color: var(--gold); font-family: "Cascadia Mono", Consolas, monospace; font-weight: 600; margin-right: 4px; }
+  .tlentry.advice { color: var(--text); }
+  .tlentry.death b { color: var(--red); }
+  .tlentry.objective b { color: var(--blue); }
   .ev b { color: var(--gold); font-family: "Cascadia Mono", Consolas, monospace; font-weight: 600; margin-right: 5px; }
 
   @media (max-height: 880px) {
@@ -289,6 +302,12 @@
       </div>
     </div>
     <div class="eventsline" id="events"></div>
+  </div>
+
+  <div class="tlstrip" id="tlStrip" style="display:none">
+    <span class="tllabel" id="tlToggle" title="toggle timeline"><i class="ph-fill ph-clock-counter-clockwise"></i>TIMELINE</span>
+    <span class="tlbudget" id="tlBudget"></span>
+    <div class="tllist" id="tlList"></div>
   </div>
 </div>
 
@@ -1361,6 +1380,67 @@ async function pollPurchase(){
   } catch (e) { lastPurchase = null; renderPurchase(); }
 }
 
+let tlOpen = false;
+let tlAvailable = null;
+let lastTimeline = null;
+
+function tlClock(v){
+  const n = num(v);
+  if (n == null || n < 0) return '--:--';
+  return fmt(n);
+}
+
+function renderTimeline(){
+  const strip = document.getElementById('tlStrip');
+  const list = document.getElementById('tlList');
+  const budget = document.getElementById('tlBudget');
+  if (!strip || !list || !budget) return;
+  const j = lastTimeline;
+  if (!j || !j.ok) { strip.style.display = 'none'; return; }
+  const inf = isObj(j.inference) ? j.inference : {};
+  const used = num(inf.used), limit = num(inf.limit), remaining = num(inf.remaining);
+  let budgetTxt = '';
+  if (used != null && limit != null) {
+    budgetTxt = 'inferences <b>' + used + '/' + limit + '</b>' +
+      (remaining != null ? ' <i>(' + remaining + ' left)</i>' : '');
+  } else if (!j.game) {
+    budgetTxt = 'no game yet';
+  }
+  budget.innerHTML = budgetTxt;
+  const rows = [];
+  for (const e of (j.events || [])) {
+    rows.push({t: e.t_game, ts: e.at_ts, cls: String(e.kind || ''), text: String(e.label || e.kind || '')});
+  }
+  for (const a of (j.advice || [])) {
+    rows.push({t: a.t_game, ts: a.at_ts, cls: 'advice', text: String(a.text || '')});
+  }
+  rows.sort((x, y) => (num(x.ts) || 0) - (num(y.ts) || 0));
+  const tail = rows.slice(-14);
+  list.innerHTML = tail.length
+    ? tail.map(r => `<span class="tlentry ${esc(r.cls)}"><b>${tlClock(r.t)}</b>${esc(r.text.slice(0, 160))}</span>`).join('')
+    : '<span class="tlentry">no timeline entries yet</span>';
+  strip.style.display = 'flex';
+  strip.classList.toggle('open', tlOpen);
+}
+
+async function pollTimeline(){
+  try {
+    const r = await fetchJson('/api/timeline?limit=40', 8000);
+    if (r.status === 404) {
+      tlAvailable = false;
+      const strip = document.getElementById('tlStrip');
+      if (strip) strip.style.display = 'none';
+      return;
+    }
+    tlAvailable = true;
+    const j = r.json;
+    if (!isObj(j)) { return; }
+    if (!j.ok) { return; }
+    lastTimeline = j;
+    renderTimeline();
+  } catch (e) { /* keep the last timeline view */ }
+}
+
 async function pollHighlight(){
   try {
     const r = await fetchJson('/api/highlight', 8000);
@@ -1483,7 +1563,10 @@ scheduleLoop(pollDeath, 4000);
 scheduleLoop(pollCost, 5000);
 scheduleLoop(pollPlan, 10000);
 scheduleLoop(pollPurchase, 5000);
+scheduleLoop(pollTimeline, 5000);
 scheduleLoop(pollHighlight, 60000);
+const tlToggleEl = document.getElementById('tlToggle');
+if (tlToggleEl) tlToggleEl.addEventListener('click', () => { tlOpen = !tlOpen; renderTimeline(); });
 setInterval(updateDeathRing, 1000);
 setInterval(tickClock, 250);
 </script>
