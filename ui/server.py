@@ -20,6 +20,10 @@ try:
     import msvcrt
 except ImportError:
     msvcrt = None
+try:
+    import purchase
+except ImportError:  # package-style import (python3 -m ui.server)
+    from . import purchase
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(BASE)
@@ -58,6 +62,7 @@ ITEM_NAMES = {}
 ITEM_DISPLAY = {}
 ITEM_COSTS = {}
 ITEM_INTO = {}
+PURCHASE_CATALOG = {}
 
 _UNSET = object()
 
@@ -209,6 +214,7 @@ def load_item_data(catalog=None):
 
 def refresh_asset_state():
     global CHAMPS, ITEMS, ITEM_NAMES, ITEM_DISPLAY, ITEM_COSTS, ITEM_INTO
+    global PURCHASE_CATALOG
     champ_obj = _try_catalog(CHAMP_FILE, 'champion')
     item_obj = _try_catalog(ITEM_FILE, 'item')
     if champ_obj:
@@ -226,6 +232,10 @@ def refresh_asset_state():
         ASSETS['itemVersion'] = None
         ASSETS['itemCount'] = 0
     ITEMS, ITEM_NAMES, ITEM_DISPLAY, ITEM_COSTS, ITEM_INTO = load_item_data(item_obj)
+    try:
+        PURCHASE_CATALOG = purchase.load_catalog(item_obj) if item_obj else {}
+    except Exception:
+        PURCHASE_CATALOG = {}
     champ_version = ASSETS['championVersion']
     item_version = ASSETS['itemVersion']
     ASSETS['mismatch'] = bool(champ_version and item_version and champ_version != item_version)
@@ -244,6 +254,8 @@ def version_info():
 
 
 def chain_of(iid):
+    if PURCHASE_CATALOG:
+        return purchase.chain_of(PURCHASE_CATALOG, iid)
     seen = set()
     stack = [iid]
     while stack:
@@ -694,6 +706,68 @@ def build_plan():
     }
 
 
+def _empty_slots():
+    return {'total': purchase.SLOT_COUNT, 'used': 0, 'free': purchase.SLOT_COUNT, 'ok': True}
+
+
+def build_purchase():
+    state = build_state()
+    plan = build_plan()
+    live = state.get('status') == 'live'
+    payload = {
+        'ok': False,
+        'status': 'no_game',
+        'champ': plan.get('champ'),
+        'gold': None,
+        'owned': {},
+        'plan': plan.get('items') or [],
+        'next': None,
+        'alternatives': [],
+        'slots': _empty_slots(),
+        'reasons': [],
+        'sessionId': plan.get('sessionId') or state.get('sessionId'),
+        'assetVersion': ASSETS.get('version'),
+    }
+    if not live:
+        status = state.get('status') or 'no_game'
+        payload['status'] = 'api_error' if status == 'api_error' else 'no_game'
+        payload['reasons'] = [state.get('reason') or state.get('error') or 'no active game']
+        return payload
+
+    me = None
+    for player in state.get('players') or []:
+        if isinstance(player, dict) and player.get('me'):
+            me = player
+            break
+    if me is None:
+        payload['status'] = 'no_identity'
+        payload['reasons'] = ['could not identify active player inventory']
+        return payload
+
+    owned = purchase.inventory_summary(me.get('items') or [])
+    gold = _num(me.get('gold'))
+    if not PURCHASE_CATALOG:
+        payload['owned'] = owned
+        payload['gold'] = gold
+        payload['status'] = 'no_catalog'
+        payload['reasons'] = ['item catalog unavailable']
+        return payload
+
+    result = purchase.next_purchase(owned, plan.get('items') or [], gold, PURCHASE_CATALOG)
+    status = result.get('status') or 'ok'
+    payload.update({
+        'ok': status in ('ok', 'plan_complete'),
+        'status': status,
+        'owned': owned,
+        'gold': gold,
+        'next': result.get('next'),
+        'alternatives': result.get('alternatives') or [],
+        'slots': result.get('slots') or payload['slots'],
+        'reasons': result.get('reasons') or [],
+    })
+    return payload
+
+
 def _db_connect():
     con = sqlite3.connect('file:%s?mode=ro' % DB_PATH.replace('\\', '/'), uri=True, timeout=2)
     con.row_factory = None
@@ -862,6 +936,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         elif path == '/api/plan':
             plan = build_plan()
             self._send(plan, code=500 if plan.get('status') == 'read_error' else 200)
+        elif path == '/api/purchase':
+            self._send(build_purchase())
         elif path == '/api/highlight':
             names = [n for n in sorted(ITEMS.keys(), key=len, reverse=True)
                      if len(n) >= 4 and n not in ('Ward', 'Wards')]
