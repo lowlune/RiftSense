@@ -38,7 +38,7 @@ $phase = ''
 $left = '?'
 if ($session.timer) {
     $phase = $session.timer.phase
-    if ($session.timer.adjustedTimeLeftInPhase) { $left = [math]::Round($session.timer.adjustedTimeLeftInPhase / 1000) }
+    if ($null -ne $session.timer.adjustedTimeLeftInPhase) { $left = [math]::Round([double]$session.timer.adjustedTimeLeftInPhase / 1000) }
 }
 Write-Output "PHASE: $phase | time left: ${left}s"
 

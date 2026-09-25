@@ -4,41 +4,9 @@ param([string]$Source)
 
 function Fmt-Time {
     param([double]$Seconds)
-    $t = [int]$Seconds
+    $t = [int][math]::Floor($Seconds)
+    if ($t -lt 0) { $t = 0 }
     return ('{0}:{1:00}' -f [int][math]::Floor($t / 60), ($t % 60))
-}
-
-$tmp = Join-Path $env:TEMP 'lol_live_data.json'
-$d = $null
-if ($Source -and (Test-Path -LiteralPath $Source)) {
-    $raw = Get-Content -LiteralPath $Source -Raw -Encoding UTF8
-    if ($raw) { try { $d = $raw | ConvertFrom-Json } catch { } }
-}
-if (-not $d) {
-    $null = curl.exe -k -s -o $tmp --max-time 8 'https://127.0.0.1:2999/liveclientdata/allgamedata'
-    if (Test-Path -LiteralPath $tmp) {
-        $raw2 = Get-Content -LiteralPath $tmp -Raw -Encoding UTF8
-        if ($raw2) { try { $d = $raw2 | ConvertFrom-Json } catch { } }
-    }
-}
-if (-not $d -or -not $d.gameData) {
-    Write-Output 'Not in a live game (Live Client Data API not reachable).'
-    exit 0
-}
-
-$itemGold = @{}
-$itemsCache = Join-Path $PSScriptRoot 'items.json'
-if (-not (Test-Path -LiteralPath $itemsCache)) {
-    try {
-        $vers = Invoke-RestMethod -Uri 'https://ddragon.leagueoflegends.com/api/versions.json' -TimeoutSec 20
-        Invoke-WebRequest -Uri ("https://ddragon.leagueoflegends.com/cdn/$($vers[0])/data/en_US/item.json") -OutFile $itemsCache -TimeoutSec 60 -UseBasicParsing
-    } catch { }
-}
-if (Test-Path -LiteralPath $itemsCache) {
-    try {
-        $ij = (Get-Content -LiteralPath $itemsCache -Raw -Encoding UTF8) | ConvertFrom-Json
-        foreach ($prop in $ij.data.PSObject.Properties) { $itemGold[[int]$prop.Name] = [int]$prop.Value.gold.total }
-    } catch { }
 }
 
 function Short-Item {
@@ -68,6 +36,23 @@ function Short-Item {
     return ($Name -split ' ')[0]
 }
 
+function Format-ItemList {
+    param($Items)
+    $out = @()
+    foreach ($it in $Items) {
+        $id = 0
+        if ($null -ne $it.itemID) { try { $id = [int]$it.itemID } catch { $id = 0 } }
+        if ($id -le 0) { continue }
+        $count = 1
+        if ($null -ne $it.count) { try { $count = [int]$it.count } catch { $count = 1 } }
+        if ($count -lt 1) { $count = 1 }
+        $label = Short-Item "$($it.displayName)"
+        if ($label) { $out += ("{0}x{1}({2})" -f $id, $count, $label) }
+        else { $out += ("{0}x{1}" -f $id, $count) }
+    }
+    return ($out -join ' ')
+}
+
 function Pos-Short {
     param([string]$P)
     switch ("$P") {
@@ -80,21 +65,78 @@ function Pos-Short {
     }
 }
 
+function Get-PlayerLabel {
+    param($P)
+    $full = "$($P.riotId)"
+    if (-not $full) {
+        if ($P.riotIdGameName -and $P.riotIdTagLine) { $full = "$($P.riotIdGameName)#$($P.riotIdTagLine)" }
+        elseif ($P.riotIdGameName) { $full = "$($P.riotIdGameName)" }
+        elseif ($P.summonerName) { $full = "$($P.summonerName)" }
+    }
+    return $full
+}
+
+function Test-SamePlayer {
+    param($A, $B)
+    if (-not $A -or -not $B) { return $false }
+    $aFull = "$($A.riotId)"; $bFull = "$($B.riotId)"
+    if ($aFull -and $bFull) { return ($aFull -ieq $bFull) }
+    if ($A.riotIdGameName -and $B.riotIdGameName) {
+        if ($A.riotIdTagLine -and $B.riotIdTagLine) {
+            return (($A.riotIdGameName -ieq $B.riotIdGameName) -and ($A.riotIdTagLine -ieq $B.riotIdTagLine))
+        }
+        return ($A.riotIdGameName -ieq $B.riotIdGameName)
+    }
+    $aS = "$($A.summonerName)"; $bS = "$($B.summonerName)"
+    if ($aS -and $bS) { return ($aS -ieq $bS) }
+    return $false
+}
+
+$d = $null
+if ($Source -and (Test-Path -LiteralPath $Source)) {
+    try {
+        $raw = Get-Content -LiteralPath $Source -Raw -Encoding UTF8 -ErrorAction Stop
+        if ($raw) { try { $d = $raw | ConvertFrom-Json } catch { $d = $null } }
+    } catch { $d = $null }
+}
+if (-not $d) {
+    $tmp = Join-Path $env:TEMP ("lol_live_" + [guid]::NewGuid().ToString('N') + ".json")
+    if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+    $code = curl.exe -k -s -o $tmp -w '%{http_code}' --max-time 8 'https://127.0.0.1:2999/liveclientdata/allgamedata'
+    $curlExit = $LASTEXITCODE
+    if ($curlExit -eq 0 -and $code -eq '200' -and (Test-Path -LiteralPath $tmp)) {
+        try {
+            $raw2 = Get-Content -LiteralPath $tmp -Raw -Encoding UTF8 -ErrorAction Stop
+            if ($raw2) { try { $d = $raw2 | ConvertFrom-Json } catch { $d = $null } }
+        } catch { $d = $null }
+    }
+    if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+}
+if (-not $d -or -not $d.gameData) {
+    Write-Output 'Not in a live game (Live Client Data API not reachable).'
+    exit 0
+}
+
+$itemGold = @{}
+$itemsCache = Join-Path $PSScriptRoot 'items.json'
+if (-not (Test-Path -LiteralPath $itemsCache)) { Update-DdragonAsset -Names @('item') }
+if (Test-Path -LiteralPath $itemsCache) {
+    try {
+        $ij = (Get-Content -LiteralPath $itemsCache -Raw -Encoding UTF8) | ConvertFrom-Json
+        foreach ($prop in $ij.data.PSObject.Properties) { $itemGold[[int]$prop.Name] = [int]$prop.Value.gold.total }
+    } catch { }
+}
+
 $g = $d.gameData
 $ap = $d.activePlayer
 $me = $null
 foreach ($p in $d.allPlayers) {
-    if ($ap.riotId -and $p.riotId -and ($p.riotId -ieq $ap.riotId)) { $me = $p; break }
-    if ($ap.riotIdGameName -and $p.riotIdGameName -and ($p.riotIdGameName -ieq $ap.riotIdGameName) -and ($p.riotIdTagLine -ieq $ap.riotIdTagLine)) { $me = $p; break }
-    if ($ap.summonerName -and $p.summonerName -and ($p.summonerName -ieq $ap.summonerName)) { $me = $p; break }
+    if (Test-SamePlayer $p $ap) { $me = $p; break }
 }
 
 Write-Output ("GAME {0} {1}" -f (Fmt-Time $g.gameTime), $g.gameMode)
 
 if ($me) {
-    $items = @()
-    foreach ($it in $me.items) { $s = Short-Item "$($it.displayName)"; if ($s) { $items += $s } }
-    $items = ($items | Select-Object -Unique) -join ' '
     $abil = $ap.abilities
     $q = 0; $w = 0; $e2 = 0; $r = 0
     if ($abil) {
@@ -117,9 +159,35 @@ if ($me) {
     $cs = $ap.championStats
     $myGold = 0
     if ($null -ne $ap.currentGold) { $myGold = [math]::Round([double]$ap.currentGold) }
-    Write-Output ("ME {0} {1} L{2} {3}/{4}/{5} CS{6} {7}g | {8} | Q{9}W{10}E{11}R{12} | {13}" -f $me.championName, (Pos-Short "$($me.position)"), $me.level, (Get-PStat $me 'kills'), (Get-PStat $me 'deaths'), (Get-PStat $me 'assists'), (Get-PStat $me 'creepScore'), $myGold, $items, $q, $w, $e2, $r, $ks)
+    Write-Output ("ME {0} {1} L{2} {3}/{4}/{5} CS{6} {7}g | {8} | Q{9}W{10}E{11}R{12} | {13}" -f $me.championName, (Pos-Short "$($me.position)"), $me.level, (Get-PStat $me 'kills'), (Get-PStat $me 'deaths'), (Get-PStat $me 'assists'), (Get-PStat $me 'creepScore'), $myGold, (Format-ItemList $me.items), $q, $w, $e2, $r, $ks)
     if ($cs) {
         Write-Output ("STATS HP {0:0}/{1:0} AD {2:0} AP {3:0} Armor {4:0} MR {5:0} MS {6:0}" -f [double]$cs.currentHealth, [double]$cs.maxHealth, [double]$cs.attackDamage, [double]$cs.abilityPower, [double]$cs.armor, [double]$cs.magicResist, [double]$cs.moveSpeed)
+    }
+}
+
+$idParts = @()
+foreach ($p in $d.allPlayers) {
+    $full = Get-PlayerLabel $p
+    $alias = "$($p.riotIdGameName)"
+    if (-not $alias) { $alias = "$($p.summonerName)" }
+    if (-not $full) { $full = $alias; $alias = '' }
+    $namePart = $full
+    if ($alias -and ($alias -ine $full)) { $namePart = "$full($alias)" }
+    $teamCode = '?'
+    if ("$($p.team)" -eq 'ORDER') { $teamCode = 'O' }
+    elseif ("$($p.team)" -eq 'CHAOS') { $teamCode = 'C' }
+    $idParts += ("{0} {1} {2}={3}" -f $teamCode, (Pos-Short "$($p.position)"), $namePart, $p.championName)
+}
+if ($idParts) { Write-Output ("IDENT " + ($idParts -join ' | ')) }
+
+$teamByName = @{}
+foreach ($p in $d.allPlayers) {
+    foreach ($n in @((Get-PlayerLabel $p), "$($p.riotIdGameName)", "$($p.summonerName)")) {
+        $n = "$n"
+        if ($n) {
+            $key = $n.ToLowerInvariant()
+            if (-not $teamByName.ContainsKey($key)) { $teamByName[$key] = "$($p.team)" }
+        }
     }
 }
 
@@ -128,19 +196,18 @@ foreach ($tg in ($d.allPlayers | Group-Object team)) {
     $tot = 0
     $lines = @()
     foreach ($p in $tg.Group) {
-        $items = @()
         $val = 0
         foreach ($it in $p.items) {
             $id = [int]$it.itemID
-            if ($itemGold.ContainsKey($id)) { $val += $itemGold[$id] }
-            $s = Short-Item "$($it.displayName)"
-            if ($s) { $items += $s }
+            $count = 1
+            if ($null -ne $it.count) { try { $count = [int]$it.count } catch { $count = 1 } }
+            if ($count -lt 1) { $count = 1 }
+            if ($itemGold.ContainsKey($id)) { $val += $itemGold[$id] * $count }
         }
-        $items = ($items | Select-Object -Unique) -join ' '
         $tot += $val
         $pre = 'O'
         if ($tg.Name -ne 'ORDER') { $pre = 'C' }
-        $lines += ("{0} {1} {2} L{3} {4}/{5}/{6} {7} {8}g | {9}" -f $pre, $p.championName, (Pos-Short "$($p.position)"), $p.level, (Get-PStat $p 'kills'), (Get-PStat $p 'deaths'), (Get-PStat $p 'assists'), (Get-PStat $p 'creepScore'), $val, $items)
+        $lines += ("{0} {1} {2} L{3} {4}/{5}/{6} {7} {8}g | {9}" -f $pre, $p.championName, (Pos-Short "$($p.position)"), $p.level, (Get-PStat $p 'kills'), (Get-PStat $p 'deaths'), (Get-PStat $p 'assists'), (Get-PStat $p 'creepScore'), $val, (Format-ItemList $p.items))
     }
     $teamTotals[$tg.Name] = $tot
     foreach ($l in $lines) { Write-Output $l }
@@ -154,7 +221,9 @@ if ($teamTotals.ContainsKey('ORDER') -and $teamTotals.ContainsKey('CHAOS')) {
 
 $tNow = [double]$g.gameTime
 $lastDragon = -1.0
-$dragonCount = 0
+$orderElems = 0
+$chaosElems = 0
+$unknownElems = 0
 $lastDragonType = ''
 $lastBaron = -1.0
 $events = @()
@@ -162,7 +231,15 @@ foreach ($e in $d.events.Events) {
     $et = [double]$e.EventTime
     $name = "$($e.EventName)"
     if ($name -eq 'DragonKill') {
-        $dragonCount++
+        $dt = "$($e.DragonType)"
+        if ($dt -ne 'Elder') {
+            $k = "$($e.KillerName)".ToLowerInvariant()
+            $kt = ''
+            if ($teamByName.ContainsKey($k)) { $kt = $teamByName[$k] }
+            if ($kt -eq 'ORDER') { $orderElems++ }
+            elseif ($kt -eq 'CHAOS') { $chaosElems++ }
+            else { $unknownElems++ }
+        }
         if ($et -gt $lastDragon) { $lastDragon = $et; $lastDragonType = "$($e.DragonType)" }
         $events += ("{0} Drg {1} {2}" -f (Fmt-Time $et), $e.DragonType, $e.KillerName)
     } elseif ($name -eq 'BaronKill') {
@@ -191,9 +268,13 @@ foreach ($e in $d.events.Events) {
     }
 }
 
+$soulTeam = ''
+if ($orderElems -ge 4) { $soulTeam = 'ORDER' }
+elseif ($chaosElems -ge 4) { $soulTeam = 'CHAOS' }
+
 if ($lastDragon -ge 0) {
     if ($lastDragonType -eq 'Elder') { $dSpawn = $lastDragon + 360; $dName = 'Elder' }
-    elseif ($dragonCount -ge 4) { $dSpawn = $lastDragon + 360; $dName = 'Elder' }
+    elseif ($soulTeam) { $dSpawn = $lastDragon + 360; $dName = 'Elder' }
     else { $dSpawn = $lastDragon + 300; $dName = 'Dragon' }
 } else {
     $dSpawn = 300
@@ -206,7 +287,12 @@ if ($lastBaron -ge 0) { $bSpawn = $lastBaron + 360 } else { $bSpawn = 1200 }
 $bLeft = $bSpawn - $tNow
 if ($bLeft -le 0) { $bVal = "UP(" + (Fmt-Time $bSpawn) + ")" } else { $bVal = ("in {0}({1})" -f (Fmt-Time $bLeft), (Fmt-Time $bSpawn)) }
 
-Write-Output ("TIMERS {0} {1} | dragons {2} | Baron {3}" -f $dName, $dVal, $dragonCount, $bVal)
+$drakeTxt = "O$orderElems C$chaosElems"
+if ($unknownElems -gt 0) { $drakeTxt += " U$unknownElems" }
+$soulTxt = 'none'
+if ($soulTeam) { $soulTxt = $soulTeam }
+elseif ($unknownElems -gt 0) { $soulTxt = 'unknown' }
+Write-Output ("TIMERS {0} {1} | drakes {2} soul {3} | Baron {4}" -f $dName, $dVal, $drakeTxt, $soulTxt, $bVal)
 
 $tail = $events | Select-Object -Last 8
 if ($tail) { Write-Output ("EV " + (($tail) -join ' | ')) }
