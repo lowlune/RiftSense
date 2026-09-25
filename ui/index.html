@@ -67,6 +67,11 @@
   .mutebtn { background: transparent; border: 1px solid rgba(255,255,255,.08); color: var(--dim); border-radius: 7px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 13px; }
   .mutebtn:hover { color: var(--gold); border-color: var(--line); }
   .mutebtn.off { color: var(--faint); }
+  .mutebtn:disabled { cursor: default; opacity: .55; }
+  .ovlbtn { display: inline-flex; align-items: center; height: 26px; padding: 0 8px; border: 1px solid rgba(255,255,255,.08); border-radius: 7px; color: var(--dim); font-size: 9px; font-weight: 700; letter-spacing: .12em; text-decoration: none; }
+  .ovlbtn:hover { color: var(--gold); border-color: var(--line); }
+  .audiostate.voice-on { color: var(--blue); }
+  .audiostate.voice-off, .audiostate.nosup { color: var(--faint); }
   .health { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
   .hbadge { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); border: 1px solid rgba(255,255,255,.08); border-radius: 7px; padding: 2px 6px; white-space: nowrap; }
   .hbadge i { font-size: 11px; }
@@ -266,6 +271,9 @@
     <div class="hcost"><span class="amount" id="costTotal">$—</span><span class="sub" id="costSub">—</span><span class="sub" id="costAge"></span></div>
     <span class="audiostate off" id="audioState">audio off</span>
     <button class="mutebtn" id="muteBtn" title="toggle sound"><i class="ph-fill ph-speaker-high" id="muteIcon"></i></button>
+    <span class="audiostate voice-off" id="voiceState">voice off</span>
+    <button class="mutebtn" id="voiceBtn" title="toggle spoken coaching"><i class="ph-fill ph-speaker-slash" id="voiceIcon"></i></button>
+    <a class="ovlbtn" id="overlayBtn" href="/overlay" target="_blank" rel="noopener" title="read-only OBS / second-monitor overlay">OVERLAY</a>
   </div>
 
   <div class="buildstrip" id="buildStrip" style="display:none">
@@ -487,6 +495,139 @@ function chime(kind){
     o.start(start); o.stop(start + 0.5);
   }
   return true;
+}
+
+const TTS_PRIORITY = { coach: 1, objective: 2, death: 3 };
+const TTS_MIN_INTERVAL_MS = 6000;
+const TTS_MAX_LEN = 240;
+const TTS_MAX_QUEUE = 3;
+const ttsSupported = typeof window !== 'undefined' && !!window.speechSynthesis && typeof window.SpeechSynthesisUtterance === 'function';
+let voiceOn = false;
+let ttsCurrent = null;
+let ttsQueue = [];
+let ttsSeq = 0;
+let ttsGen = 0;
+let ttsLastStart = 0;
+let ttsTimer = null;
+let lastDeathTtsKey = null;
+const ttsSeen = new Set();
+
+function loadVoicePref(){
+  try { return localStorage.getItem('lolcoachVoice') === '1'; } catch (e) { return false; }
+}
+voiceOn = ttsSupported && loadVoicePref();
+
+function voiceSanitize(raw){
+  return tidy(raw).replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, TTS_MAX_LEN);
+}
+
+function refreshVoiceState(){
+  const st = document.getElementById('voiceState');
+  const btn = document.getElementById('voiceBtn');
+  const icon = document.getElementById('voiceIcon');
+  const state = !ttsSupported ? 'nosup' : (voiceOn ? 'voice-on' : 'voice-off');
+  if (btn) {
+    btn.disabled = !ttsSupported;
+    btn.classList.toggle('off', !ttsSupported || !voiceOn);
+    btn.title = !ttsSupported ? 'voice unavailable — this browser has no speechSynthesis support'
+      : (voiceOn ? 'spoken coaching on — click to disable (death > objective > coach)'
+        : 'spoken coaching off — click to enable (death > objective > coach, min 6s apart)');
+  }
+  if (icon) icon.className = 'ph-fill ' + (!ttsSupported || !voiceOn ? 'ph-speaker-slash' : 'ph-speaker-high');
+  if (st) {
+    st.textContent = !ttsSupported ? 'voice n/a' : (voiceOn ? 'voice on' : 'voice off');
+    st.className = 'audiostate ' + state;
+  }
+}
+
+function ttsCancel(){
+  ttsGen++;
+  ttsCurrent = null;
+  if (ttsSupported) { try { window.speechSynthesis.cancel(); } catch (e) {} }
+}
+
+function ttsSchedule(delayMs){
+  if (ttsTimer) return;
+  ttsTimer = setTimeout(() => { ttsTimer = null; ttsFlush(); }, Math.max(0, delayMs));
+}
+
+function ttsStart(item){
+  const gen = ++ttsGen;
+  ttsCurrent = item;
+  ttsLastStart = performance.now();
+  try {
+    const u = new SpeechSynthesisUtterance(item.text);
+    u.rate = 1.05;
+    u.pitch = 1;
+    u.volume = 0.9;
+    const done = () => {
+      if (gen !== ttsGen) return;
+      ttsCurrent = null;
+      ttsFlush();
+    };
+    u.onend = done;
+    u.onerror = done;
+    window.speechSynthesis.speak(u);
+  } catch (e) {
+    if (gen === ttsGen) ttsCurrent = null;
+  }
+}
+
+function ttsFlush(){
+  if (!ttsSupported || !voiceOn || ttsCurrent || !ttsQueue.length) return;
+  const wait = ttsLastStart + TTS_MIN_INTERVAL_MS - performance.now();
+  if (wait > 0) { ttsSchedule(wait); return; }
+  ttsQueue.sort((a, b) => b.priority - a.priority || a.seq - b.seq);
+  ttsStart(ttsQueue.shift());
+}
+
+function ttsEnqueue(kind, raw, key){
+  if (!ttsSupported || !voiceOn) return false;
+  const text = voiceSanitize(raw);
+  if (!text) return false;
+  const priority = TTS_PRIORITY[kind] || 1;
+  const dedupe = kind + '|' + (key || text);
+  if (ttsSeen.has(dedupe)) return false;
+  ttsSeen.add(dedupe);
+  if (ttsSeen.size > 60) ttsSeen.delete(ttsSeen.values().next().value);
+  const item = { kind: kind, text: text, priority: priority, seq: ++ttsSeq };
+  if (ttsCurrent && priority > ttsCurrent.priority) {
+    ttsCancel();
+    ttsQueue = ttsQueue.filter(q => q.priority >= priority);
+    ttsStart(item);
+    return true;
+  }
+  if (ttsQueue.length >= TTS_MAX_QUEUE) {
+    let weakest = 0;
+    for (let i = 1; i < ttsQueue.length; i++) if (ttsQueue[i].priority < ttsQueue[weakest].priority) weakest = i;
+    if (ttsQueue[weakest].priority <= priority) ttsQueue.splice(weakest, 1);
+    else return false;
+  }
+  ttsQueue.push(item);
+  ttsFlush();
+  return true;
+}
+
+function deathSpeechText(j){
+  const st = isObj(j.structured) ? j.structured : null;
+  if (st) {
+    const died = typeof st.died === 'string' && st.died.trim() ? st.died.trim() : '';
+    const clock = typeof st.gameClock === 'string' && st.gameClock.trim() ? st.gameClock.trim() : '';
+    const killer = typeof st.killer === 'string' && st.killer.trim() ? st.killer.trim() : '';
+    if (died) return 'Death report: ' + died;
+    if (clock) return 'Death at ' + clock + (killer ? ' to ' + killer : '');
+  }
+  const text = typeof j.text === 'string' ? j.text.trim() : '';
+  const pend = text.match(/^PENDING\|([^|]+)\|(.+)$/);
+  if (pend) return 'Death at ' + pend[1] + ' to ' + pend[2];
+  const m = text.match(/^DIED\s*:\s*(.*)$/im);
+  if (m) return 'Death report: ' + m[1];
+  return '';
+}
+
+function coachSpeechText(text){
+  const m = typeof text === 'string' ? text.match(/^DO NOW\s*:\s*(.*)$/im) : null;
+  return m && m[1].trim() ? 'Do now. ' + m[1].trim() : '';
 }
 
 function panelFail(key, msg){ panelErrors.set(key, String(msg || 'unavailable')); renderDiag(); }
@@ -1204,8 +1345,13 @@ function renderCoach(j){
   const age = num(j.age);
   document.getElementById('coachAge').textContent = age != null ? `${Math.round(age)}s ago` : '';
   const text = typeof j.text === 'string' ? j.text.trim() : '';
-  if (text && text !== 'OUT OF GAME' && text !== lastCoachText) chime('tick');
+  const changed = !!text && text !== 'OUT OF GAME' && text !== lastCoachText;
+  if (changed) chime('tick');
   if (text) lastCoachText = text;
+  if (changed && (age == null || age <= 30)) {
+    const speech = coachSpeechText(text);
+    if (speech) ttsEnqueue('coach', speech, 'coach|' + speech);
+  }
   if (!text) { el.innerHTML = '<div class="coach-wait">Waiting for the first coach tick…</div>'; return; }
   if (text === 'OUT OF GAME') { el.innerHTML = '<div class="coach-wait">Coach idle — not in a game.</div>'; return; }
   let html = '';
@@ -1280,7 +1426,10 @@ function renderDeath(j){
   if (pend) {
     wrap.style.display = 'block';
     const isNew = !deathAnchor || deathAnchor.kind !== 'pending' || deathAnchor.clock !== pend[1] || deathAnchor.killer !== pend[2];
-    if (isNew) chime('death');
+    if (isNew) {
+      chime('death');
+      ttsEnqueue('death', 'Death at ' + pend[1] + ' to ' + pend[2], 'death-pending|' + pend[1] + '|' + pend[2]);
+    }
     deathAnchor = { kind: 'pending', clock: pend[1], killer: pend[2], age: age, at: performance.now() };
     ring.style.display = 'none';
     document.getElementById('deathAge').textContent = 'analyzing';
@@ -1292,6 +1441,11 @@ function renderDeath(j){
   ring.style.display = '';
   deathAnchor = { kind: 'final', age: age, at: performance.now() };
   updateDeathRing();
+  const dkey = text.slice(0, 300) + '|' + (isObj(j.structured) ? String(j.structured.died || j.structured.gameClock || '') : '');
+  if (dkey !== lastDeathTtsKey && age <= 20) {
+    lastDeathTtsKey = dkey;
+    ttsEnqueue('death', deathSpeechText(j), 'death|' + dkey);
+  }
   if (isObj(j.structured)) { el.innerHTML = structuredDeathHtml(j.structured); return; }
   let html = '';
   for (const raw of text.split(/\r?\n/)) {
@@ -1383,6 +1537,7 @@ async function pollPurchase(){
 let tlOpen = false;
 let tlAvailable = null;
 let lastTimeline = null;
+let tlEventSeen = null;
 
 function tlClock(v){
   const n = num(v);
@@ -1436,6 +1591,23 @@ async function pollTimeline(){
     const j = r.json;
     if (!isObj(j)) { return; }
     if (!j.ok) { return; }
+    if (tlEventSeen === null) {
+      tlEventSeen = 0;
+      for (const e of (Array.isArray(j.events) ? j.events : [])) {
+        const id = num(e && e.id);
+        if (id != null) tlEventSeen = Math.max(tlEventSeen, id);
+      }
+    } else {
+      for (const e of (Array.isArray(j.events) ? j.events : [])) {
+        const id = num(e && e.id);
+        if (id == null || id <= tlEventSeen) continue;
+        tlEventSeen = Math.max(tlEventSeen, id);
+        if (String(e.kind) === 'objective') {
+          const label = typeof e.label === 'string' && e.label.trim() ? e.label.trim() : 'Objective event';
+          ttsEnqueue('objective', label, 'objective|' + id);
+        }
+      }
+    }
     lastTimeline = j;
     renderTimeline();
   } catch (e) { /* keep the last timeline view */ }
@@ -1540,7 +1712,24 @@ document.getElementById('muteBtn').addEventListener('click', async () => {
   }
   refreshAudioState();
 });
-document.addEventListener('click', () => ensureAudio(), { once: true });
+const voiceBtnEl = document.getElementById('voiceBtn');
+if (voiceBtnEl) voiceBtnEl.addEventListener('click', () => {
+  if (!ttsSupported) { refreshVoiceState(); return; }
+  voiceOn = !voiceOn;
+  try { localStorage.setItem('lolcoachVoice', voiceOn ? '1' : '0'); } catch (e) {}
+  if (!voiceOn) {
+    ttsQueue = [];
+    ttsCancel();
+  } else {
+    try { window.speechSynthesis.resume(); } catch (e) {}
+    ttsEnqueue('coach', 'Voice coaching on', 'voice-announce');
+  }
+  refreshVoiceState();
+});
+document.addEventListener('click', () => {
+  ensureAudio();
+  if (ttsSupported && voiceOn) { try { window.speechSynthesis.resume(); } catch (e) {} }
+}, { once: true });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { ensureAudio(); refreshAudioState(); } });
 
 function scheduleLoop(fn, ms){
@@ -1554,6 +1743,7 @@ function scheduleLoop(fn, ms){
 }
 
 refreshAudioState();
+refreshVoiceState();
 pollVersion();
 pollHealth();
 scheduleLoop(pollGame, 2000);
