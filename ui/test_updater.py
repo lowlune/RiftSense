@@ -6,6 +6,7 @@ import os
 import tempfile
 import time
 import unittest
+import zipfile
 from unittest import mock
 
 from ui import updater
@@ -548,6 +549,130 @@ class AtomicStateTests(UpdaterTestCase):
         leftovers = [name for name in os.listdir(self.tmp.name)
                      if name.startswith('.tmp_update_')]
         self.assertEqual(leftovers, [])
+
+
+class StagedExtractionTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        root = self.tmp.name
+        self._orig = {name: getattr(updater, name) for name in (
+            'ROOT', 'UPDATE_DIR', 'STAGED_DIR', 'EXTRACTED_DIR', 'LOG_DIR',
+            'LOG_FILE', 'STATE_FILE', 'VERSION_FILE', 'HELPER_FILE')}
+        updater.ROOT = root
+        updater.UPDATE_DIR = os.path.join(root, '.update')
+        updater.STAGED_DIR = os.path.join(updater.UPDATE_DIR, 'staged')
+        updater.EXTRACTED_DIR = os.path.join(updater.UPDATE_DIR, 'extracted')
+        updater.LOG_DIR = os.path.join(updater.UPDATE_DIR, 'logs')
+        updater.LOG_FILE = os.path.join(updater.LOG_DIR, 'update.log')
+        updater.STATE_FILE = os.path.join(root, 'update_state.json')
+        updater.VERSION_FILE = os.path.join(root, 'VERSION')
+        updater.HELPER_FILE = os.path.join(root, 'update_apply.ps1')
+
+    def tearDown(self):
+        for name, value in self._orig.items():
+            setattr(updater, name, value)
+        self.tmp.cleanup()
+
+    def _zip(self, members, name='pkg.zip'):
+        path = os.path.join(self.tmp.name, name)
+        with zipfile.ZipFile(path, 'w') as zf:
+            for member, data in members.items():
+                zf.writestr(member, data)
+        return path
+
+    def test_extract_strips_single_top_level_prefix(self):
+        archive = self._zip({
+            'RiftSense/VERSION': '1.2.0\n',
+            'RiftSense/ui/server.py': 'x',
+            'RiftSense/README.md': 'r',
+        })
+        payload, version = updater._extract_staged(archive)
+        self.assertEqual(version, '1.2.0')
+        self.assertTrue(os.path.isfile(os.path.join(payload, 'VERSION')))
+        self.assertTrue(os.path.isfile(os.path.join(payload, 'ui', 'server.py')))
+
+    def test_extract_flat_archive_without_prefix(self):
+        archive = self._zip({'VERSION': '2.0.0', 'ui/server.py': 'x'})
+        payload, version = updater._extract_staged(archive)
+        self.assertEqual(version, '2.0.0')
+        self.assertTrue(os.path.isfile(os.path.join(payload, 'ui', 'server.py')))
+
+    def test_extract_mixed_archive_still_finds_prefixed_version(self):
+        archive = self._zip({'SHA256SUMS.txt': 'x',
+                             'RiftSense/VERSION': '2.1.0',
+                             'RiftSense/ui/server.py': 'x'})
+        payload, version = updater._extract_staged(archive)
+        self.assertEqual(version, '2.1.0')
+        self.assertTrue(os.path.isfile(os.path.join(payload, 'ui', 'server.py')))
+
+    def test_extract_moves_into_place(self):
+        archive = self._zip({'VERSION': '1.5.0', 'AutoCoach.ps1': 'x'})
+        payload, _ = updater._extract_staged(archive)
+        self.assertTrue(payload.startswith(updater.EXTRACTED_DIR + os.sep))
+        self.assertTrue(os.path.isfile(os.path.join(payload, 'AutoCoach.ps1')))
+
+    def test_rejects_path_traversal(self):
+        archive = self._zip({'RiftSense/VERSION': '1.0.0',
+                             'RiftSense/../evil.txt': 'x'})
+        with self.assertRaises(updater.UpdateError):
+            updater._extract_staged(archive)
+
+    def test_rejects_absolute_member(self):
+        archive = self._zip({'/etc/passwd': 'x', 'VERSION': '1.0.0'})
+        with self.assertRaises(updater.UpdateError):
+            updater._extract_staged(archive)
+
+    def test_rejects_symlink_member(self):
+        path = os.path.join(self.tmp.name, 'sym.zip')
+        with zipfile.ZipFile(path, 'w') as zf:
+            zf.writestr('VERSION', '1.0.0')
+            info = zipfile.ZipInfo('link')
+            info.external_attr = (0o120777 << 16)
+            zf.writestr(info, 'target')
+        with self.assertRaises(updater.UpdateError):
+            updater._extract_staged(path)
+
+    def test_rejects_missing_version(self):
+        archive = self._zip({'RiftSense/README.md': 'x'})
+        with self.assertRaises(updater.UpdateError):
+            updater._extract_staged(archive)
+
+    def test_rejects_version_mismatch(self):
+        archive = self._zip({'VERSION': '1.0.0', 'ui/server.py': 'x'})
+        with self.assertRaises(updater.UpdateError):
+            updater._extract_staged(archive, expected_version='2.0.0')
+
+    def test_apply_directory_payload_passes_payload_dir_and_restart(self):
+        payload = os.path.join(self.tmp.name, 'payload')
+        os.makedirs(os.path.join(payload, 'ui'))
+        with open(os.path.join(payload, 'VERSION'), 'w', encoding='utf-8') as f:
+            f.write('9.9.9')
+        with open(os.path.join(payload, 'ui', 'server.py'), 'w', encoding='utf-8') as f:
+            f.write('x')
+        with open(updater.HELPER_FILE, 'w', encoding='utf-8') as f:
+            f.write('# fake helper')
+        with mock.patch.object(updater, 'app_version', return_value='1.0.0'), \
+                mock.patch.object(updater.subprocess, 'Popen') as popen:
+            result = updater._apply(payload)
+        self.assertTrue(result['ok'])
+        args = popen.call_args[0][0]
+        self.assertIn(payload, args)
+        self.assertIn('-Restart', args)
+        self.assertIn('-WaitPid', args)
+
+    def test_apply_extracts_zip_before_spawning_helper(self):
+        archive = self._zip({'RiftSense/VERSION': '9.9.9',
+                             'RiftSense/ui/server.py': 'x'})
+        with open(updater.HELPER_FILE, 'w', encoding='utf-8') as f:
+            f.write('# fake helper')
+        with mock.patch.object(updater, 'app_version', return_value='1.0.0'), \
+                mock.patch.object(updater.subprocess, 'Popen') as popen:
+            result = updater._apply(archive)
+        self.assertTrue(result['ok'])
+        args = popen.call_args[0][0]
+        staged_arg = args[args.index('-Staged') + 1]
+        self.assertTrue(os.path.isfile(os.path.join(staged_arg, 'VERSION')))
+        self.assertFalse(staged_arg.endswith('.zip'))
 
 
 if __name__ == '__main__':

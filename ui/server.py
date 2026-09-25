@@ -91,6 +91,23 @@ PLAN_LEGACY_RE = re.compile(r'^PLAN\s*:\s*(.+)$', re.IGNORECASE)
 PLAN_CONTROL_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f]')
 _PLAN_WRITE_LOCK = threading.Lock()
 _UPDATE_LOCK = threading.Lock()
+_HTTPD = None
+
+
+def request_shutdown(delay=1.0):
+    """Stop serving shortly so the update helper can replace files safely."""
+    def _later():
+        try:
+            time.sleep(max(0.0, float(delay)))
+        except (TypeError, ValueError):
+            time.sleep(1.0)
+        server = _HTTPD
+        if server is not None:
+            try:
+                server.shutdown()
+            except Exception:
+                pass
+    threading.Thread(target=_later, daemon=True).start()
 
 SSL_CTX = ssl.create_default_context()
 SSL_CTX.check_hostname = False
@@ -2112,7 +2129,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._send(updater.download(version=version, channel=channel))
             else:
                 staged = payload.get('staged_path') or payload.get('path')
-                self._send(updater.apply(staged_path=staged))
+                result = updater.apply(staged_path=staged)
+                self._send(result)
+                if isinstance(result, dict) and result.get('ok'):
+                    request_shutdown()
         except ValueError as ex:
             self._send({'ok': False, 'error': 'invalid_body',
                         'message': str(ex)}, code=400)
@@ -2180,10 +2200,12 @@ refresh_asset_state()
 
 
 def main():
+    global _HTTPD
     os.chdir(BASE)
     ensure_assets()
     refresh_asset_state()
     with http.server.ThreadingHTTPServer(('127.0.0.1', PORT), Handler) as httpd:
+        _HTTPD = httpd
         print('LoL Coach UI running at http://127.0.0.1:%d' % PORT)
         print('Keep this window open. Close it to stop the UI server.')
         httpd.serve_forever()

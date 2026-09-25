@@ -158,12 +158,14 @@ class UpdateApiTests(unittest.TestCase):
                    'logPath': '/tmp/update.log', 'error': None}
         with mock.patch.object(server, 'build_state',
                                return_value={'status': 'no_active_game'}):
-            with mock.patch.object(server.updater, 'apply', return_value=payload) as apply_fn:
+            with mock.patch.object(server.updater, 'apply', return_value=payload) as apply_fn, \
+                    mock.patch.object(server, 'request_shutdown') as shutdown:
                 status, body = self._request('/api/update/apply', {},
                                              headers=self._auth())
         self.assertEqual(status, 200)
         self.assertEqual(body, payload)
         self.assertIn('staged_path', apply_fn.call_args.kwargs)
+        shutdown.assert_called_once()
 
     def test_get_update_log_endpoint(self):
         seen = []

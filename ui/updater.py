@@ -28,6 +28,7 @@ import time
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
+import zipfile
 from datetime import datetime, timezone
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -35,6 +36,7 @@ ROOT = os.path.dirname(BASE)
 VERSION_FILE = os.path.join(ROOT, 'VERSION')
 UPDATE_DIR = os.path.join(ROOT, '.update')
 STAGED_DIR = os.path.join(UPDATE_DIR, 'staged')
+EXTRACTED_DIR = os.path.join(UPDATE_DIR, 'extracted')
 LOG_DIR = os.path.join(UPDATE_DIR, 'logs')
 LOG_FILE = os.path.join(LOG_DIR, 'update.log')
 STATE_FILE = os.path.join(ROOT, 'update_state.json')
@@ -51,6 +53,8 @@ GITHUB_API_VERSION = '2022-11-28'
 ATOM_NS = 'http://www.w3.org/2005/Atom'
 CHANNELS = ('stable', 'beta')
 MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
+MAX_EXTRACT_BYTES = 200 * 1024 * 1024
+MAX_EXTRACT_ENTRIES = 3000
 CHECK_TTL = 6 * 60 * 60
 STATE_SCHEMA = 1
 
@@ -62,6 +66,10 @@ _TAG_RE = re.compile(r'v?\d+(?:\.\d+){1,3}(?:-[0-9A-Za-z.\-]+)?')
 
 
 class DownloadTooLarge(Exception):
+    pass
+
+
+class UpdateError(Exception):
     pass
 
 
@@ -708,6 +716,105 @@ def _download(version, channel, timeout):
 
 # -------------------------------------------------------------------- apply
 
+
+def _safe_member(name):
+    """Validate one archive member path; raise UpdateError when unsafe."""
+    raw = str(name or '').replace('\\', '/').strip()
+    if not raw or raw.endswith('/'):
+        return None
+    if raw.startswith('/') or re.match(r'^[A-Za-z]:', raw) or raw.startswith('//'):
+        raise UpdateError('archive member has an absolute path: %s' % name)
+    if '\x00' in raw:
+        raise UpdateError('archive member contains a NUL byte')
+    parts = [p for p in raw.split('/') if p not in ('', '.')]
+    if any(p == '..' for p in parts):
+        raise UpdateError('archive member escapes the target directory: %s' % name)
+    return '/'.join(parts)
+
+
+def _extract_staged(zip_path, expected_version=None):
+    """Safely extract a staged release zip. Returns (payload_dir, version)."""
+    if not os.path.isfile(zip_path):
+        raise UpdateError('staged archive not found: %s' % zip_path)
+    os.makedirs(EXTRACTED_DIR, exist_ok=True)
+    tmp_dir = tempfile.mkdtemp(dir=UPDATE_DIR, prefix='tmp-extract-')
+    try:
+        try:
+            archive = zipfile.ZipFile(zip_path)
+        except (zipfile.BadZipFile, OSError) as ex:
+            raise UpdateError('staged archive is not a readable zip: %s' % ex)
+        with archive:
+            infos = [i for i in archive.infolist() if not i.is_dir()]
+            if not infos:
+                raise UpdateError('staged archive is empty')
+            if len(infos) > MAX_EXTRACT_ENTRIES:
+                raise UpdateError('staged archive has too many entries (%d)' % len(infos))
+            total = sum(int(i.file_size or 0) for i in infos)
+            if total > MAX_EXTRACT_BYTES:
+                raise UpdateError('staged archive expands to more than %d bytes'
+                                  % MAX_EXTRACT_BYTES)
+            safe_names = []
+            for info in infos:
+                rel = _safe_member(info.filename)
+                if rel is None:
+                    continue
+                safe_names.append(rel)
+                mode = (info.external_attr >> 16) & 0o170000
+                if mode == 0o120000:
+                    raise UpdateError('archive contains a symlink: %s' % info.filename)
+            tops = {n.split('/', 1)[0] for n in safe_names if '/' in n}
+            has_root_version = 'VERSION' in safe_names
+            prefix = ''
+            if not has_root_version and len(tops) == 1:
+                prefix = tops.pop() + '/'
+            root = os.path.abspath(tmp_dir)
+            for info in infos:
+                rel = _safe_member(info.filename)
+                if rel is None:
+                    continue
+                if prefix and rel.startswith(prefix):
+                    rel = rel[len(prefix):]
+                if not rel:
+                    continue
+                target = os.path.abspath(os.path.join(tmp_dir, rel.replace('/', os.sep)))
+                if target != root and not target.startswith(root + os.sep):
+                    raise UpdateError('archive member escapes the target directory: %s'
+                                      % info.filename)
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                with archive.open(info) as src, open(target, 'wb') as dst:
+                    shutil.copyfileobj(src, dst)
+        version_path = os.path.join(tmp_dir, 'VERSION')
+        version = None
+        if os.path.isfile(version_path):
+            with open(version_path, 'r', encoding='utf-8', errors='replace') as f:
+                version = f.read().strip().lstrip('vV') or None
+        if not version:
+            raise UpdateError('staged archive has no VERSION file')
+        if expected_version and version_key(expected_version) is not None:
+            if version_key(version) is None or compare_versions(version, expected_version) != 0:
+                raise UpdateError('staged VERSION %s does not match expected %s'
+                                  % (version, expected_version))
+        final_dir = os.path.join(EXTRACTED_DIR, version)
+        shutil.rmtree(final_dir, ignore_errors=True)
+        os.replace(tmp_dir, final_dir)
+        tmp_dir = None
+        return final_dir, version
+    finally:
+        if tmp_dir:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def _payload_version(payload_dir):
+    path = os.path.join(payload_dir, 'VERSION')
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, 'r', encoding='utf-8', errors='replace') as f:
+            return f.read().strip().lstrip('vV') or None
+    except OSError:
+        return None
+
+
 def apply(staged_path=None):
     if os.name != 'nt':
         return {'ok': False, 'status': 'unsupported', 'helper': None,
@@ -724,24 +831,41 @@ def _apply(staged_path):
     stored = _read_state()
     staged = stored.get('staged') if isinstance(stored.get('staged'), dict) else {}
     path = staged_path or staged.get('path') or os.path.join(STAGED_DIR, ASSET_NAME)
-    if not os.path.isfile(path):
+    version = staged.get('version')
+    if os.path.isdir(path):
+        payload_dir = path
+    elif os.path.isfile(path):
+        try:
+            payload_dir, version = _extract_staged(path, version)
+        except UpdateError as ex:
+            return {'ok': False, 'status': 'error', 'helper': None, 'logPath': LOG_FILE,
+                    'error': str(ex)}
+        if isinstance(stored.get('staged'), dict):
+            stored['staged']['extracted'] = payload_dir
+            stored['staged']['version'] = version
+            try:
+                _write_state(stored)
+            except OSError:
+                pass
+    else:
         return {'ok': False, 'status': 'error', 'helper': None, 'logPath': LOG_FILE,
                 'error': 'no staged update found at %s' % path}
+    if not version:
+        version = _payload_version(payload_dir)
     if not os.path.isfile(HELPER_FILE):
         return {'ok': False, 'status': 'error', 'helper': None, 'logPath': LOG_FILE,
                 'error': 'missing updater helper: %s' % HELPER_FILE}
-    version = staged.get('version') or app_version()
-    if version_key(version) is not None and not is_newer(version, app_version()):
+    if not version or version_key(version) is None or not is_newer(version, app_version()):
         return {'ok': False, 'status': 'error', 'helper': None, 'logPath': LOG_FILE,
-                'error': 'refusing to apply non-newer version %s (current %s)'
-                         % (version, app_version())}
+                'error': 'refusing to apply version %s (current %s)'
+                         % (version or 'unknown', app_version())}
     os.makedirs(LOG_DIR, exist_ok=True)
     helper_dir = tempfile.mkdtemp(prefix='riftsense-apply-')
     helper = os.path.join(helper_dir, os.path.basename(HELPER_FILE))
     shutil.copy2(HELPER_FILE, helper)
     args = [
         'powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', helper,
-        '-Staged', os.path.dirname(path),
+        '-Staged', payload_dir,
         '-InstallDir', ROOT,
         '-Version', version,
         '-LogDir', LOG_DIR,
