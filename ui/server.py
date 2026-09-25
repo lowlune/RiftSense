@@ -29,6 +29,10 @@ try:
     import timeline
 except ImportError:  # package-style import (python3 -m ui.server)
     from . import timeline
+try:
+    import review
+except ImportError:  # package-style import (python3 -m ui.server)
+    from . import review
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(BASE)
@@ -1133,6 +1137,15 @@ def build_timeline_current():
                 'error': type(ex).__name__, 'message': str(ex)}
 
 
+def build_review(game_id=None):
+    try:
+        return review.build_review(game_id, item_names=ITEM_DISPLAY,
+                                   item_into=ITEM_INTO, item_costs=ITEM_COSTS)
+    except Exception as ex:
+        return {'ok': False, 'status': 'review_error',
+                'error': type(ex).__name__, 'message': str(ex)}
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     def _send(self, payload, ctype='application/json; charset=utf-8', code=200):
         if not isinstance(payload, (bytes, bytearray)):
@@ -1202,6 +1215,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send(build_timeline(limit))
         elif path == '/api/timeline/current':
             self._send(build_timeline_current())
+        elif path == '/api/review/latest':
+            self._send(build_review())
+        elif path == '/api/review':
+            query = urllib.parse.parse_qs(self.path.split('?', 1)[1]) if '?' in self.path else {}
+            raw = (query.get('gameId') or [''])[0]
+            if not raw:
+                self._send({'ok': False, 'status': 'bad_request', 'error': 'gameId required'},
+                           code=400)
+                return
+            try:
+                game_id = int(raw)
+            except (TypeError, ValueError):
+                self._send({'ok': False, 'status': 'bad_request', 'error': 'invalid gameId'},
+                           code=400)
+                return
+            self._send(build_review(game_id))
         elif path == '/api/highlight':
             names = [n for n in sorted(ITEMS.keys(), key=len, reverse=True)
                      if len(n) >= 4 and n not in ('Ward', 'Wards')]
