@@ -234,6 +234,40 @@
   .review-prio .rtitle { font-weight: 600; font-size: 12.5px; }
   .review-prio .rfocus { font-size: 11.5px; color: var(--text); }
   .review-prio .revid { font-size: 10px; color: var(--dim); }
+  .trendstrip { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 0 6px; font-size: 10.5px; color: var(--dim); min-height: 15px; }
+  .trendstrip .trlabel { display: flex; align-items: center; gap: 5px; font-size: 9px; font-weight: 700; letter-spacing: .16em; color: var(--gold-dim); cursor: pointer; user-select: none; white-space: nowrap; }
+  .trendstrip .trlabel:hover { color: var(--gold); }
+  .trendstrip .trsum b { color: var(--gold); font-family: "Cascadia Mono", Consolas, monospace; font-weight: 600; }
+  .trendstrip .trbody { display: none; }
+  .trendstrip.open { flex-wrap: wrap; }
+  .trendstrip.open .trbody { display: block; flex-basis: 100%; max-height: 130px; overflow-y: auto; padding: 3px 0 5px; border-top: 1px dashed rgba(255,255,255,.08); margin-top: 2px; }
+  .trgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 4px 18px; }
+  .trsec { min-width: 0; }
+  .trsec .trhead { font-size: 9px; font-weight: 700; letter-spacing: .14em; color: var(--gold-dim); text-transform: uppercase; margin-bottom: 2px; }
+  .trrow { display: flex; justify-content: space-between; gap: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .trrow > span:last-child { color: var(--text); font-family: "Cascadia Mono", Consolas, monospace; }
+  .trbar { height: 5px; border-radius: 3px; background: rgba(255,255,255,.06); overflow: hidden; margin: 1px 0 2px; }
+  .trbar i { display: block; height: 100%; background: rgba(224,93,111,.55); }
+  .trnote { color: var(--faint); font-size: 9.5px; }
+  .trempty { color: var(--dim); font-style: italic; }
+
+  .modal { position: fixed; inset: 0; background: rgba(2,6,12,.74); display: none; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
+  .modal.show { display: flex; }
+  .modalbox { width: min(780px, 96vw); max-height: 88vh; display: flex; flex-direction: column; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; box-shadow: 0 18px 50px rgba(0,0,0,.55); }
+  .modalhead { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; letter-spacing: .18em; color: var(--gold); text-transform: uppercase; }
+  .modalhead .x { margin-left: auto; background: transparent; border: none; color: var(--dim); font-size: 19px; line-height: 1; cursor: pointer; }
+  .modalhead .x:hover { color: var(--text); }
+  .modalnote { font-size: 11px; color: var(--dim); }
+  .modalnote code { color: var(--gold); }
+  #planText { min-height: 280px; flex: 1 1 auto; resize: vertical; background: #08101c; color: var(--text); border: 1px solid rgba(255,255,255,.12); border-radius: 9px; padding: 9px 10px; font: 12.5px/1.5 "Cascadia Mono", Consolas, monospace; }
+  #planText:focus { outline: none; border-color: var(--gold-dim); }
+  .modalerr { min-height: 15px; font-size: 11px; color: var(--red); white-space: pre-wrap; }
+  .modalstatus { font-size: 11px; color: var(--green); margin-right: auto; }
+  .modalrow { display: flex; align-items: center; gap: 8px; }
+  .mbtn { background: transparent; border: 1px solid rgba(255,255,255,.14); color: var(--text); border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
+  .mbtn:hover { border-color: var(--gold-dim); }
+  .mbtn.primary { background: var(--gold); border-color: var(--gold); color: #131313; font-weight: 700; }
+  .mbtn:disabled { opacity: .45; cursor: default; }
 
   @media (max-height: 880px) {
     body { padding: 6px 10px 7px; }
@@ -292,6 +326,7 @@
     <span class="diag" id="diag"></span>
     <div class="hcost"><span class="amount" id="costTotal">$—</span><span class="sub" id="costSub">—</span><span class="sub" id="costAge"></span></div>
     <span class="audiostate off" id="audioState">audio off</span>
+    <button class="mutebtn" id="planEditBtn" title="edit build plan"><i class="ph-fill ph-hammer"></i></button>
     <button class="mutebtn" id="muteBtn" title="toggle sound"><i class="ph-fill ph-speaker-high" id="muteIcon"></i></button>
     <span class="audiostate voice-off" id="voiceState">voice off</span>
     <button class="mutebtn" id="voiceBtn" title="toggle spoken coaching"><i class="ph-fill ph-speaker-slash" id="voiceIcon"></i></button>
@@ -358,6 +393,23 @@
     <span class="tllabel" id="tlToggle" title="toggle timeline"><i class="ph-fill ph-clock-counter-clockwise"></i>TIMELINE</span>
     <span class="tlbudget" id="tlBudget"></span>
     <div class="tllist" id="tlList"></div>
+  </div>
+
+  <div class="trendstrip" id="trendStrip" style="display:none">
+    <span class="trlabel" id="trToggle" title="toggle trends"><i class="ph-fill ph-chart-line-up"></i>TRENDS</span>
+    <span class="trsum" id="trSummary"></span>
+    <div class="trbody" id="trBody"></div>
+  </div>
+</div>
+
+<div class="modal" id="planModal" aria-hidden="true">
+  <div class="modalbox" role="dialog" aria-modal="true" aria-labelledby="planModalTitle">
+    <div class="modalhead"><i class="ph-fill ph-hammer"></i><span id="planModalTitle">Edit build plan</span><button class="x" id="planClose" title="close" aria-label="close">×</button></div>
+    <div class="modalnote">One <code>PLAN[Champion]: Item -&gt; Item</code> line per champion; notes are free text. Saving backs up the current file to <code>build_intent.txt.bak</code> and writes atomically. Max 64 KB.</div>
+    <div class="modalnote" id="planNames"></div>
+    <textarea id="planText" spellcheck="false" placeholder="PLAN[Nunu &amp; Willump]: Haunting Guise -> Liandry's Torment"></textarea>
+    <div class="modalerr" id="planErr"></div>
+    <div class="modalrow"><span class="modalstatus" id="planStatus"></span><button class="mbtn" id="planReload">Reload</button><button class="mbtn primary" id="planSave">Save</button></div>
   </div>
 </div>
 
@@ -935,6 +987,19 @@ async function fetchJson(url, timeoutMs){
   const to = setTimeout(() => { try { ac.abort(); } catch (e) {} }, timeoutMs || 8000);
   try {
     const r = await fetch(url, { cache: 'no-store', signal: ac.signal });
+    serverReachable = true;
+    let json = null, badJson = false;
+    try { json = await r.json(); } catch (e) { badJson = true; }
+    return { status: r.status, ok: r.ok, json: json, badJson: badJson };
+  } finally { clearTimeout(to); }
+}
+
+async function postJson(url, body, timeoutMs){
+  const ac = new AbortController();
+  const to = setTimeout(() => { try { ac.abort(); } catch (e) {} }, timeoutMs || 8000);
+  try {
+    const r = await fetch(url, { method: 'POST', cache: 'no-store', signal: ac.signal,
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     serverReachable = true;
     let json = null, badJson = false;
     try { json = await r.json(); } catch (e) { badJson = true; }
@@ -1794,6 +1859,208 @@ async function pollReview(){
   } catch (e) { /* keep the last review on transport errors */ }
 }
 
+let trendsOpen = false;
+let trendsAvailable = null;
+let lastTrends = null;
+
+function trCount(v){
+  const n = num(v);
+  return n == null ? '0' : String(Math.round(n));
+}
+
+function trBar(count, max){
+  const pct = max > 0 ? Math.max(0, Math.min(100, Math.round((count / max) * 100))) : 0;
+  return '<div class="trbar"><i style="width:' + pct + '%"></i></div>';
+}
+
+function renderTrendsBody(j){
+  const parts = [];
+  const games = isObj(j.games) ? j.games : {};
+  const champs = (Array.isArray(j.champs) ? j.champs : []).filter(isObj);
+  let html = '<div class="trsec"><div class="trhead">Champions (n=' + trCount(games.played) + ' ended games)</div>';
+  if (!champs.length) html += '<div class="trempty">no completed games recorded</div>';
+  for (const c of champs.slice(0, 8)) {
+    const gamesN = num(c.games) || 0;
+    const avg = num(c.avgDeaths);
+    html += '<div class="trrow"><span>' + esc(typeof c.champ === 'string' ? c.champ : '(unknown)') +
+      ' <span class="trnote">n=' + trCount(gamesN) + '</span></span><span>' + trCount(c.deaths) + ' d' +
+      (avg != null ? ' \u00b7 ' + avg.toFixed(2) + '/game' : '') + '</span></div>';
+  }
+  html += '</div>';
+  parts.push(html);
+
+  const db = isObj(j.deathBuckets) ? j.deathBuckets : {};
+  const buckets = (Array.isArray(db.buckets) ? db.buckets : []).filter(isObj);
+  const maxBucket = buckets.reduce((m, b) => Math.max(m, num(b.count) || 0), 0);
+  html = '<div class="trsec"><div class="trhead">Death minute (n=' + trCount(db.total) +
+    ((num(db.unknown) || 0) > 0 ? ' \u00b7 clock unknown ' + trCount(db.unknown) : '') + ')</div>';
+  if (!(num(db.total) > 0)) html += '<div class="trempty">no deaths recorded</div>';
+  for (const b of buckets) {
+    const count = num(b.count) || 0;
+    html += '<div class="trrow"><span>' + esc(String(b.label || '')) + '</span><span>' + trCount(count) +
+      '</span></div>' + trBar(count, maxBucket);
+  }
+  html += '</div>';
+  parts.push(html);
+
+  const obj = isObj(j.objectives) ? j.objectives : {};
+  const counts = (Array.isArray(obj.counts) ? obj.counts : [])
+    .filter(c => isObj(c) && (num(c.count) || 0) > 0);
+  html = '<div class="trsec"><div class="trhead">Objective events (n=' + trCount(obj.total) + ')</div>';
+  if (!counts.length) html += '<div class="trempty">no objective events recorded</div>';
+  for (const c of counts) {
+    html += '<div class="trrow"><span>' + esc(String(c.label || '')) + '</span><span>' +
+      trCount(c.count) + '</span></div>';
+  }
+  html += '</div>';
+  parts.push(html);
+
+  const inf = isObj(j.inference) ? j.inference : {};
+  const cost = num(inf.cost);
+  html = '<div class="trsec"><div class="trhead">Inference (n=' + trCount(inf.requests) + ')</div>';
+  html += '<div class="trrow"><span>ok / failed</span><span>' + trCount(inf.ok) + ' / ' + trCount(inf.failed) + '</span></div>';
+  html += '<div class="trrow"><span>tokens in / out</span><span>' + trCount(inf.tokensIn) + ' / ' + trCount(inf.tokensOut) + '</span></div>';
+  html += '<div class="trrow"><span>cost</span><span>' + (cost != null ? '$' + cost.toFixed(4) : '$—') + '</span></div>';
+  html += '</div>';
+  parts.push(html);
+
+  const note = typeof j.note === 'string' && j.note ? j.note
+    : 'Observed counts only; sample sizes shown; no causal claims.';
+  return '<div class="trgrid">' + parts.join('') + '</div><div class="trnote">' + esc(note) + '</div>';
+}
+
+function renderTrends(){
+  const strip = document.getElementById('trendStrip');
+  const summary = document.getElementById('trSummary');
+  const body = document.getElementById('trBody');
+  if (!strip || !summary || !body) return;
+  const j = lastTrends;
+  if (!j || !j.ok) { strip.style.display = 'none'; return; }
+  const games = isObj(j.games) ? j.games : {};
+  const db = isObj(j.deathBuckets) ? j.deathBuckets : {};
+  const inf = isObj(j.inference) ? j.inference : {};
+  const cost = num(inf.cost);
+  summary.innerHTML = '<b>' + trCount(games.played) + '</b> games (n) \u00b7 <b>' +
+    trCount(db.total) + '</b> deaths (n) \u00b7 $' + (cost != null ? cost.toFixed(4) : '—') + ' inference';
+  body.innerHTML = renderTrendsBody(j);
+  strip.style.display = 'flex';
+  strip.classList.toggle('open', trendsOpen);
+}
+
+async function pollTrends(){
+  try {
+    const r = await fetchJson('/api/trends', 8000);
+    if (r.status === 404) {
+      trendsAvailable = false;
+      lastTrends = null;
+      renderTrends();
+      return;
+    }
+    trendsAvailable = true;
+    const j = r.json;
+    if (!isObj(j)) return;
+    lastTrends = j;
+    renderTrends();
+  } catch (e) { /* keep the last trends view */ }
+}
+
+let planEditorAvailable = null;
+
+function setPlanEditorState(err, status){
+  const errEl = document.getElementById('planErr');
+  const stEl = document.getElementById('planStatus');
+  if (errEl) errEl.textContent = err || '';
+  if (stEl) stEl.textContent = status || '';
+}
+
+function setPlanNames(text){
+  const el = document.getElementById('planNames');
+  if (!el) return;
+  const names = [];
+  const seen = new Set();
+  const re = /^\s*PLAN\[([^\[\]]{1,64})\]/gmi;
+  let m;
+  while ((m = re.exec(text))) {
+    const name = m[1].trim();
+    const key = name.toLowerCase();
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
+  el.textContent = names.length ? 'plans in file: ' + names.join(', ') : 'no PLAN[...] lines yet';
+}
+
+async function loadPlanRaw(){
+  try {
+    const r = await fetchJson('/api/plan/raw', 8000);
+    if (r.status === 404) {
+      planEditorAvailable = false;
+      const btn = document.getElementById('planEditBtn');
+      if (btn) btn.style.display = 'none';
+      return false;
+    }
+    const j = r.json;
+    if (!isObj(j) || typeof j.text !== 'string') {
+      setPlanEditorState('could not read the plan file', '');
+      return false;
+    }
+    planEditorAvailable = true;
+    const ta = document.getElementById('planText');
+    if (ta) ta.value = j.text;
+    setPlanNames(j.text);
+    return true;
+  } catch (e) {
+    setPlanEditorState('UI server offline — could not load the plan', '');
+    return false;
+  }
+}
+
+async function openPlanEditor(){
+  const modal = document.getElementById('planModal');
+  if (!modal) return;
+  setPlanEditorState('', '');
+  const loaded = await loadPlanRaw();
+  if (!loaded) return;
+  modal.classList.add('show');
+  modal.setAttribute('aria-hidden', 'false');
+  const ta = document.getElementById('planText');
+  if (ta) ta.focus();
+}
+
+function closePlanEditor(){
+  const modal = document.getElementById('planModal');
+  if (!modal) return;
+  modal.classList.remove('show');
+  modal.setAttribute('aria-hidden', 'true');
+}
+
+async function savePlanEditor(){
+  const ta = document.getElementById('planText');
+  const save = document.getElementById('planSave');
+  if (!ta || !save) return;
+  save.disabled = true;
+  setPlanEditorState('', 'saving…');
+  try {
+    const r = await postJson('/api/plan/edit', { text: ta.value }, 10000);
+    const j = r.json;
+    if (!isObj(j)) { setPlanEditorState('unexpected response from the server', ''); return; }
+    if (!j.ok) {
+      const details = Array.isArray(j.details) ? j.details.filter(x => typeof x === 'string') : [];
+      setPlanEditorState(details.length ? details.join('\n') : (j.message || j.error || 'save rejected'), '');
+      return;
+    }
+    await loadPlanRaw();
+    const lines = num(j.lines);
+    const backup = typeof j.backup === 'string' && j.backup ? ' · backup ' + j.backup : '';
+    setPlanEditorState('', 'saved' + (lines != null ? ' ' + Math.round(lines) + ' lines' : '') + backup);
+    pollPlan();
+  } catch (e) {
+    setPlanEditorState('UI server offline — save failed', '');
+  } finally {
+    save.disabled = false;
+  }
+}
+
 async function pollHighlight(){
   try {
     const r = await fetchJson('/api/highlight', 8000);
@@ -1944,6 +2211,21 @@ if (reviewCloseEl) reviewCloseEl.addEventListener('click', () => {
   if (lastReview && isObj(lastReview.game)) reviewDismissedGame = lastReview.game.id;
   renderReview();
 });
+scheduleLoop(pollTrends, 15000);
+const trToggleEl = document.getElementById('trToggle');
+if (trToggleEl) trToggleEl.addEventListener('click', () => { trendsOpen = !trendsOpen; renderTrends(); });
+const planEditBtn = document.getElementById('planEditBtn');
+if (planEditBtn) planEditBtn.addEventListener('click', openPlanEditor);
+const planCloseEl = document.getElementById('planClose');
+if (planCloseEl) planCloseEl.addEventListener('click', closePlanEditor);
+const planReloadEl = document.getElementById('planReload');
+if (planReloadEl) planReloadEl.addEventListener('click', () => { setPlanEditorState('', ''); loadPlanRaw(); });
+const planSaveEl = document.getElementById('planSave');
+if (planSaveEl) planSaveEl.addEventListener('click', savePlanEditor);
+const planModalEl = document.getElementById('planModal');
+if (planModalEl) planModalEl.addEventListener('click', ev => { if (ev.target === planModalEl) closePlanEditor(); });
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closePlanEditor(); });
+loadPlanRaw();
 setInterval(updateDeathRing, 1000);
 setInterval(tickClock, 250);
 </script>

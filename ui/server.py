@@ -37,6 +37,10 @@ try:
     import packs
 except ImportError:  # package-style import (python3 -m ui.server)
     from . import packs
+try:
+    import trends
+except ImportError:  # package-style import (python3 -m ui.server)
+    from . import trends
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(BASE)
@@ -70,6 +74,16 @@ DEATH_STRUCTURED_STATUS = ('ok',)
 DEATH_STRUCTURED_TTL = 900
 DEATH_STRUCTURED_MAX_BYTES = 262144
 DEATH_STRUCTURED_MAX_ITEMS = 20
+PLAN_MAX_BYTES = 65536
+PLAN_MAX_LINES = 500
+PLAN_LINE_MAX = 400
+PLAN_ITEM_MAX = 80
+PLAN_MAX_ITEMS = 12
+PLAN_MAX_DETAILS = 12
+PLAN_RE = re.compile(r'^PLAN\[([^\[\]\r\n]{1,64})\]\s*:\s*(.+)$')
+PLAN_LEGACY_RE = re.compile(r'^PLAN\s*:\s*(.+)$', re.IGNORECASE)
+PLAN_CONTROL_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f]')
+_PLAN_WRITE_LOCK = threading.Lock()
 
 SSL_CTX = ssl.create_default_context()
 SSL_CTX.check_hostname = False
@@ -861,6 +875,158 @@ def build_plan():
     }
 
 
+def build_plan_raw():
+    text, age, status = read_text_file(BUILD_FILE)
+    return {'ok': status != 'error', 'status': status, 'text': text, 'age': age,
+            'backup': os.path.basename(BUILD_FILE) + '.bak',
+            'limits': {'bytes': PLAN_MAX_BYTES, 'lines': PLAN_MAX_LINES}}
+
+
+def _split_items(raw):
+    return [part.strip() for part in raw.split('->')]
+
+
+def validate_plan_text(text):
+    if not isinstance(text, str):
+        return {'ok': False, 'error': 'invalid_text',
+                'details': ['plan text must be a string']}
+    normalized = text.replace('\r\n', '\n').replace('\r', '\n')
+    try:
+        encoded = normalized.encode('utf-8')
+    except UnicodeEncodeError:
+        return {'ok': False, 'error': 'invalid_text',
+                'details': ['plan contains invalid unicode']}
+    if len(encoded) > PLAN_MAX_BYTES:
+        return {'ok': False, 'error': 'too_large',
+                'details': ['plan exceeds %d bytes' % PLAN_MAX_BYTES]}
+    raw_lines = normalized.split('\n')
+    if len(raw_lines) > PLAN_MAX_LINES:
+        return {'ok': False, 'error': 'too_large',
+                'details': ['plan exceeds %d lines' % PLAN_MAX_LINES]}
+    errors = []
+    out = []
+    plan_lines = 0
+    seen = {}
+    for idx, raw in enumerate(raw_lines, 1):
+        line = raw.rstrip()
+        if PLAN_CONTROL_RE.search(line):
+            errors.append('line %d: control characters are not allowed' % idx)
+            continue
+        if len(line) > PLAN_LINE_MAX:
+            errors.append('line %d: line exceeds %d characters' % (idx, PLAN_LINE_MAX))
+            continue
+        stripped = line.strip()
+        if not stripped:
+            out.append('')
+            continue
+        upper = stripped.upper()
+        match = PLAN_RE.match(stripped) if upper.startswith('PLAN[') else None
+        legacy = PLAN_LEGACY_RE.match(stripped) if upper.startswith('PLAN') and not match else None
+        plan_like = upper.startswith('PLAN[') or upper.startswith('PLAN:')
+        if plan_like and not (match or legacy):
+            errors.append('line %d: malformed PLAN line (expected '
+                          '"PLAN[Champion]: Item -> Item")' % idx)
+            continue
+        if match:
+            champ = match.group(1).strip()
+            raw_items = match.group(2)
+            key = champ.lower()
+        elif legacy:
+            champ = 'default'
+            raw_items = legacy.group(1)
+            key = 'default'
+        else:
+            out.append(line)
+            continue
+        if not champ:
+            errors.append('line %d: empty champion name' % idx)
+            continue
+        if key in seen:
+            errors.append('line %d: duplicate plan for %s (first on line %d)'
+                          % (idx, champ, seen[key]))
+            continue
+        items = _split_items(raw_items)
+        if not items or any(not item for item in items):
+            errors.append('line %d: empty item in plan (check the "->" separators)' % idx)
+            continue
+        if len(items) > PLAN_MAX_ITEMS:
+            errors.append('line %d: too many items (max %d)' % (idx, PLAN_MAX_ITEMS))
+            continue
+        if any(len(item) > PLAN_ITEM_MAX for item in items):
+            errors.append('line %d: item name exceeds %d characters' % (idx, PLAN_ITEM_MAX))
+            continue
+        seen[key] = idx
+        out.append(stripped)
+        plan_lines += 1
+    if not plan_lines:
+        errors.append('at least one "PLAN[Champion]: Item -> Item" line is required')
+    if errors:
+        return {'ok': False, 'error': 'invalid_plan', 'details': errors[:PLAN_MAX_DETAILS]}
+    return {'ok': True, 'text': '\n'.join(out).rstrip('\n') + '\n',
+            'lines': len(out), 'planLines': plan_lines}
+
+
+def plan_text_from_payload(payload):
+    if not isinstance(payload, dict):
+        raise ValueError('body must be a JSON object')
+    if 'text' in payload and payload['text'] is not None:
+        text = payload['text']
+        if not isinstance(text, str):
+            raise ValueError('text must be a string')
+        return text
+    if 'lines' in payload and payload['lines'] is not None:
+        lines = payload['lines']
+        if not isinstance(lines, list) or not lines:
+            raise ValueError('lines must be a non-empty array of strings')
+        for line in lines:
+            if not isinstance(line, str):
+                raise ValueError('lines must contain only strings')
+        return '\n'.join(lines)
+    raise ValueError('either text or lines is required')
+
+
+def _atomic_write_bytes(path, payload):
+    directory = os.path.dirname(path) or '.'
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix='.tmp_plan_', suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(payload)
+            f.flush()
+            os.fsync(f.fileno())
+        try:
+            os.chmod(tmp, os.stat(path).st_mode & 0o777)
+        except OSError:
+            pass
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def write_plan_text(text):
+    result = validate_plan_text(text)
+    if not result.get('ok'):
+        return result
+    payload = result['text'].encode('utf-8')
+    backup = None
+    with _PLAN_WRITE_LOCK:
+        try:
+            if os.path.exists(BUILD_FILE):
+                with open(BUILD_FILE, 'rb') as f:
+                    original = f.read()
+                _atomic_write_bytes(BUILD_FILE + '.bak', original)
+                backup = os.path.basename(BUILD_FILE) + '.bak'
+            _atomic_write_bytes(BUILD_FILE, payload)
+        except OSError as ex:
+            return {'ok': False, 'error': 'write_error', 'details': [str(ex)]}
+    return {'ok': True, 'status': 'saved', 'bytes': len(payload),
+            'lines': result['lines'], 'planLines': result['planLines'],
+            'backup': backup, 'savedAt': time.time()}
+
+
 def _empty_slots():
     return {'total': purchase.SLOT_COUNT, 'used': 0, 'free': purchase.SLOT_COUNT, 'ok': True}
 
@@ -1167,6 +1333,15 @@ def build_review(game_id=None):
                 'error': type(ex).__name__, 'message': str(ex)}
 
 
+def build_trends():
+    try:
+        return trends.build_trends()
+    except Exception as ex:
+        return {'ok': False, 'status': 'trends_error',
+                'error': type(ex).__name__, 'message': str(ex),
+                'unavailable': ['all']}
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     def _send(self, payload, ctype='application/json; charset=utf-8', code=200):
         if not isinstance(payload, (bytes, bytearray)):
@@ -1242,6 +1417,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 payload = dict(pack)
                 payload['ok'] = True
                 self._send(payload)
+        elif path == '/api/plan/raw':
+            raw = build_plan_raw()
+            self._send(raw, code=500 if raw.get('status') == 'error' else 200)
+        elif path == '/api/trends':
+            report = build_trends()
+            self._send(report, code=200 if report.get('ok') else 503)
         elif path == '/api/purchase':
             self._send(build_purchase())
         elif path == '/api/timeline':
@@ -1278,18 +1459,44 @@ class Handler(http.server.BaseHTTPRequestHandler):
         else:
             self.send_error(404)
 
+    def _read_json_body(self, limit):
+        length = int(self.headers.get('Content-Length') or 0)
+        if length <= 0 or length > limit:
+            raise ValueError('invalid body length')
+        payload = json.loads(self.rfile.read(length).decode('utf-8'))
+        if not isinstance(payload, dict):
+            raise ValueError('body must be a JSON object')
+        return payload
+
     def do_POST(self):
         path = self.path.split('?', 1)[0].rstrip('/')
+        if path == '/api/plan/edit':
+            try:
+                payload = self._read_json_body(PLAN_MAX_BYTES)
+                text = plan_text_from_payload(payload)
+            except Exception as ex:
+                self._send({'ok': False, 'error': 'invalid_body',
+                            'message': str(ex)}, code=400)
+                return
+            try:
+                result = write_plan_text(text)
+            except Exception as ex:
+                self._send({'ok': False, 'error': 'write_error',
+                            'message': str(ex)}, code=500)
+                return
+            if result.get('ok'):
+                code = 200
+            elif result.get('error') == 'write_error':
+                code = 500
+            else:
+                code = 400
+            self._send(result, code=code)
+            return
         try:
             if path != '/api/events':
                 self._send({'ok': False, 'error': 'not_found'}, code=404)
                 return
-            length = int(self.headers.get('Content-Length') or 0)
-            if length <= 0 or length > 65536:
-                raise ValueError('invalid body length')
-            payload = json.loads(self.rfile.read(length).decode('utf-8'))
-            if not isinstance(payload, dict):
-                raise ValueError('body must be a JSON object')
+            payload = self._read_json_body(65536)
             self._send(ingest_event(payload))
         except Exception as ex:
             self._send({'ok': False, 'error': type(ex).__name__, 'message': str(ex)}, code=400)
