@@ -287,6 +287,184 @@ class NextPurchaseFixtureTests(unittest.TestCase):
                          from_set['next']['goldToComplete'])
 
 
+class PurchaseAuditTests(unittest.TestCase):
+    """Regressions for B15 (fractional gold), B16 (repeated components/steps),
+    B17 (slot entries) and the rank-3 purchase frontier."""
+
+    def setUp(self):
+        self.catalog = fixture_catalog()
+
+    def test_fractional_gold_is_accepted_and_flagged(self):
+        result = purchase.next_purchase({101: 1}, [200], 800.5, self.catalog)
+        nxt = result['next']
+        self.assertEqual(result['gold'], 800)
+        self.assertEqual(result['goldRaw'], 800.5)
+        self.assertTrue(result['goldRounded'])
+        self.assertTrue(nxt['affordableNow'])
+        self.assertEqual(nxt['goldShort'], 0)
+        self.assertTrue(any('rounded down to 800g' in r for r in result['reasons']))
+
+        text = purchase.next_purchase({101: 1}, [200], '800.5', self.catalog)
+        self.assertTrue(text['next']['affordableNow'])
+
+        exact = purchase.next_purchase({101: 1}, [200], 800.0, self.catalog)
+        self.assertFalse(exact['goldRounded'])
+        self.assertEqual(exact['gold'], 800)
+
+        for bad in (-1, -0.5, float('nan'), float('inf'), float('-inf'),
+                    True, False, 'many', None, {'gold': 1}):
+            with self.subTest(bad=bad):
+                degraded = purchase.next_purchase({}, [200], bad, self.catalog)
+                self.assertIsNone(degraded['gold'])
+                self.assertFalse(degraded['goldRounded'])
+                self.assertFalse(degraded['next']['affordableNow'])
+                self.assertIn('current gold unavailable', degraded['reasons'])
+
+    def test_two_tome_recipe_offers_the_missing_copy(self):
+        catalog = make_catalog([
+            ddragon_item(10, 'Tome', 400),
+            ddragon_item(11, 'Cloak', 300),
+            ddragon_item(20, 'Two Tome Item', 1100, from_=[10, 11, 10], base=0),
+        ])
+        with_one = purchase.next_purchase({10: 1}, [20], 0, catalog)
+        offers = {offer['id']: offer for offer in with_one['next']['components']}
+        self.assertIn(10, offers)
+        self.assertEqual(offers[10]['goldToComplete'], 400)
+        self.assertEqual(offers[10]['copiesNeeded'], 1)
+        self.assertEqual(with_one['next']['goldToComplete'], 700)
+
+        empty = purchase.next_purchase({}, [20], 0, catalog)
+        offers = {offer['id']: offer for offer in empty['next']['components']}
+        self.assertEqual(offers[10]['copiesNeeded'], 2)
+        self.assertEqual(offers[10]['goldToComplete'], 400)
+
+        rich = purchase.next_purchase({}, [20], 1200, catalog)
+        best = rich['frontier'][0]
+        self.assertTrue(best['completesTarget'])
+        self.assertEqual(best['totalCost'], 1100)
+        self.assertEqual(sorted((i['id'], i['copies']) for i in best['items']),
+                         [(10, 2), (11, 1)])
+
+    def test_repeated_plan_steps_require_repeated_copies(self):
+        one_owned = purchase.next_purchase({101: 1}, [101, 101], 400, self.catalog)
+        self.assertEqual(one_owned['status'], 'ok')
+        nxt = one_owned['next']
+        self.assertEqual(nxt['id'], 101)
+        self.assertEqual(nxt['position'], 2)
+        self.assertEqual(nxt['goldToComplete'], 350)
+        self.assertTrue(nxt['affordableNow'])
+        self.assertEqual(one_owned['planProgress'],
+                         {'completed': 1, 'position': 2, 'total': 2})
+
+        both_owned = purchase.next_purchase({101: 2}, [101, 101], 0, self.catalog)
+        self.assertEqual(both_owned['status'], 'plan_complete')
+        self.assertEqual(both_owned['planProgress']['completed'], 2)
+
+        full_items = purchase.next_purchase({200: 1}, [200, 200], 1200, self.catalog)
+        self.assertEqual(full_items['status'], 'ok')
+        self.assertEqual(full_items['next']['position'], 2)
+        self.assertEqual(full_items['next']['goldToComplete'], 1100)
+
+        chain_second = purchase.next_purchase({200: 1}, [101, 101], 400, self.catalog)
+        self.assertEqual(chain_second['status'], 'ok')
+        self.assertEqual(chain_second['next']['position'], 2)
+
+    def test_six_copies_occupy_six_slots(self):
+        entries = [{'id': 101, 'count': 1} for _ in range(6)]
+        result = purchase.next_purchase(entries, [200], 0, self.catalog)
+        self.assertEqual(result['slots'],
+                         {'total': 6, 'used': 6, 'free': 0, 'ok': False})
+        self.assertFalse(result['next']['feasibleNow'])
+        self.assertIn('no free inventory slot', result['reasons'])
+        self.assertEqual(len(result['inventory']['entries']), 6)
+
+        collapsed = purchase.next_purchase({101: 6}, [200], 0, self.catalog)
+        self.assertEqual(collapsed['slots'], result['slots'])
+        one_entry = purchase.next_purchase([{'id': 101, 'count': 6}], [200], 0, self.catalog)
+        self.assertEqual(one_entry['slots'], result['slots'])
+
+    def test_stack_and_trinket_rules(self):
+        catalog = make_catalog([
+            ddragon_item(10, 'Potion', 50, tags=['Consumable']),
+            ddragon_item(11, 'Control Ward', 75, tags=['Consumable']),
+            ddragon_item(3340, 'Stealth Ward', 0, tags=['Trinket']),
+            ddragon_item(100, 'Dagger', 300),
+        ])
+        state = purchase.inventory_slots([
+            {'id': 10, 'count': 5},
+            {'id': 11, 'count': 3},
+            {'id': 3340, 'count': 1},
+            {'id': 100, 'count': 2},
+        ], catalog)
+        self.assertEqual(state['used'], 4)
+        self.assertEqual(state['free'], 2)
+        self.assertEqual(state['trinkets'], 1)
+        self.assertTrue(state['ok'])
+
+        sprawled = purchase.inventory_slots([{'id': 10, 'count': 6}], catalog)
+        self.assertEqual(sprawled['used'], 2)
+
+        trinket_only = purchase.inventory_slots([{'id': 3340, 'count': 1}], catalog)
+        self.assertEqual(trinket_only['used'], 0)
+        self.assertEqual(trinket_only['trinkets'], 1)
+
+    def test_completing_an_item_frees_component_slots(self):
+        entries = [{'id': 101, 'count': 1}, {'id': 102, 'count': 1},
+                   {'id': 103, 'count': 1}, {'id': 100, 'count': 1},
+                   {'id': 400, 'count': 1}, {'id': 400, 'count': 1}]
+        result = purchase.next_purchase(entries, [200], 2000, self.catalog)
+        nxt = result['next']
+        self.assertEqual(result['slots']['used'], 6)
+        self.assertEqual(nxt['action'], 'complete')
+        self.assertTrue(nxt['affordableNow'])
+        self.assertTrue(nxt['feasibleNow'])
+        self.assertEqual(nxt['slotsFreed'], 2)
+        self.assertEqual(nxt['slotsAfterComplete'], 5)
+        self.assertEqual(nxt['slotDelta'], -1)
+
+        blocked = purchase.next_purchase(
+            [{'id': 103, 'count': 1}, {'id': 103, 'count': 1}, {'id': 103, 'count': 1},
+             {'id': 400, 'count': 1}, {'id': 400, 'count': 1}, {'id': 400, 'count': 1}],
+            [200], 5000, self.catalog)
+        self.assertTrue(blocked['next']['affordableNow'])
+        self.assertFalse(blocked['next']['feasibleNow'])
+        self.assertIn('no slot available even after combining components',
+                      blocked['reasons'])
+
+    def test_frontier_and_visible_summary(self):
+        result = purchase.next_purchase({}, [200], 900, self.catalog)
+        summary = result['summary']
+        self.assertEqual(summary['nextRecall']['kind'], 'component')
+        self.assertEqual(summary['targetRemaining'], 1100)
+        self.assertIn('Next recall:', summary['text'])
+        self.assertIn('Target remaining: 1100g', summary['text'])
+        self.assertIn('Completes one required component', summary['text'])
+        best = result['frontier'][0]
+        self.assertFalse(best['completesTarget'])
+        self.assertEqual(best['totalCost'], 750)
+        self.assertEqual(best['targetRemainingAfter'], 350)
+        self.assertEqual(sorted(i['id'] for i in best['items']), [101, 102])
+        self.assertEqual(summary['targetRemainingAfterBestCombo'], 350)
+
+        affordable = purchase.next_purchase({101: 1, 102: 1}, [200], 400, self.catalog)
+        self.assertEqual(affordable['summary']['nextRecall']['kind'], 'complete')
+        self.assertIn('completes it now', affordable['summary']['text'])
+
+        no_gold = purchase.next_purchase({}, [200], None, self.catalog)
+        self.assertIn('current gold unavailable', no_gold['summary']['text'])
+
+    def test_frontier_respects_free_slots(self):
+        catalog = make_catalog([
+            ddragon_item(10, 'Component A', 300),
+            ddragon_item(11, 'Component B', 300),
+            ddragon_item(20, 'Target', 1200, from_=[10, 11, 10], base=0),
+        ])
+        entries = [{'id': 99, 'count': 1}] * 6
+        result = purchase.next_purchase(entries, [20], 900, catalog)
+        self.assertEqual(result['slots']['free'], 0)
+        self.assertEqual(result['frontier'], [])
+
+
 class ChainTests(unittest.TestCase):
     def test_chain_follows_into_not_from(self):
         catalog = fixture_catalog()

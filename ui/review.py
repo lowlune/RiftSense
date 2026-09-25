@@ -3,9 +3,16 @@
 Every statement in the review is derived from recorded rows (games, events,
 advice, inference). Fields that were never observed are reported in
 ``unavailable`` instead of being guessed. No model/LLM call is made.
+
+Performance conclusions are gated on collection coverage. When coverage was
+never recorded (or was incomplete), zero recorded deaths are reported as
+"none recorded" plus a data-quality note, never as proof that the player
+"played safely". Objective-window reminders and actual objective outcomes are
+kept separate so a reminder can never read as an achievement.
 """
 
 import json
+import math
 import os
 import re
 import sqlite3
@@ -23,10 +30,14 @@ HISTORY_GAMES = 5
 MAX_LISTED = 8
 COMPLETED_ITEM_MIN_COST = 2000
 MAX_TEXT = 400
+COVERAGE_ADEQUATE_RATIO = 0.7
+COVERAGE_MIN_SECONDS = 300
 
 DEATH_LABEL_RE = re.compile(r'^died\s+(\d+:\d+)\s+to\s+(.+)$', re.IGNORECASE)
 SIGNATURE_RE = re.compile(r'inventory changed:\s*(.*)$', re.IGNORECASE)
 SIGNATURE_ITEM_RE = re.compile(r'^(\d+)x(\d+)$')
+OUTCOME_RE = re.compile(
+    r'killed|slain|secured|taken|destroyed|claimed|outcome', re.IGNORECASE)
 
 UNAVAILABLE_BASE = (
     'Damage dealt and taken was not recorded.',
@@ -37,6 +48,11 @@ UNAVAILABLE_BASE = (
     ' only objective-window reminders may appear.',
 )
 
+_COVERAGE_TABLES = ('intervals', 'coverage', 'collection_intervals', 'coverage_intervals')
+_START_COLUMNS = ('start_ms', 'started_at', 'start_ts', 'start', 'from_ms', 'from')
+_END_COLUMNS = ('end_ms', 'ended_at', 'end_ts', 'end', 'to_ms', 'to')
+_OBJECTIVE_KINDS = ('objective', 'objective_kill', 'objective_outcome')
+
 
 def _no_review(reason):
     return {
@@ -46,6 +62,9 @@ def _no_review(reason):
         'observations': [],
         'priorities': [],
         'unavailable': [reason] if reason else [],
+        'coverage': None,
+        'versions': {'catalog': None, 'rules': None, 'patch': None, 'available': False},
+        'dataQuality': {'level': 'unavailable', 'coverage': None, 'notes': []},
     }
 
 
@@ -100,6 +119,285 @@ def _prio(pid, title, focus, evidence, scope):
     return {'id': pid, 'title': title, 'focus': focus, 'evidence': list(evidence), 'scope': scope}
 
 
+def _table_columns(con, table):
+    try:
+        rows = con.execute('PRAGMA table_info(%s)' % table).fetchall()
+    except sqlite3.Error:
+        return []
+    columns = []
+    for row in rows:
+        try:
+            columns.append(row['name'])
+        except (IndexError, KeyError, TypeError):
+            continue
+    return columns
+
+
+def _interval_pair(item):
+    if isinstance(item, (list, tuple)) and len(item) >= 2:
+        return item[0], item[1]
+    if not isinstance(item, dict):
+        return None
+    start = None
+    for key in ('start', 'startMs', 'start_ms', 'started', 'startedAt', 'started_at',
+                'from', 'fromMs'):
+        if item.get(key) is not None:
+            start = item.get(key)
+            break
+    end = None
+    for key in ('end', 'endMs', 'end_ms', 'ended', 'endedAt', 'ended_at', 'to', 'toMs'):
+        if item.get(key) is not None:
+            end = item.get(key)
+            break
+    if start is None or end is None:
+        return None
+    return start, end
+
+
+def _intervals(raw):
+    """Normalize any supported coverage payload into ``[(start, end)]``."""
+    if isinstance(raw, dict):
+        found = None
+        for key in ('intervals', 'coverage', 'periods', 'windows'):
+            value = raw.get(key)
+            if isinstance(value, (list, tuple)):
+                found = value
+                break
+        if found is None:
+            pair = _interval_pair(raw)
+            raw = [pair] if pair is not None else None
+        else:
+            raw = found
+    if not isinstance(raw, (list, tuple)):
+        return None
+    pairs = []
+    for item in raw:
+        pair = _interval_pair(item)
+        if pair is None:
+            continue
+        try:
+            start = float(pair[0])
+            end = float(pair[1])
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(start) and math.isfinite(end) and end >= start:
+            pairs.append((start, end))
+    return pairs or None
+
+
+def _merge_intervals(pairs):
+    merged = []
+    for start, end in sorted(pairs):
+        if merged and start <= merged[-1][1]:
+            if end > merged[-1][1]:
+                merged[-1][1] = end
+        else:
+            merged.append([start, end])
+    return merged
+
+
+def _coverage_api_raw(game_id, module=None):
+    module = module if module is not None else timeline
+    for name in ('coverage', 'game_coverage'):
+        api = getattr(module, name, None)
+        if not callable(api):
+            continue
+        try:
+            return api(game_id)
+        except TypeError:
+            try:
+                raw = api()
+            except Exception:
+                return None
+            if isinstance(raw, dict) and game_id in raw:
+                return raw[game_id]
+            return raw
+        except Exception:
+            return None
+    return None
+
+
+def _coverage_table(con, game_id):
+    for table in _COVERAGE_TABLES:
+        columns = _table_columns(con, table)
+        if not columns or 'game_id' not in columns:
+            continue
+        start_col = next((name for name in _START_COLUMNS if name in columns), None)
+        end_col = next((name for name in _END_COLUMNS if name in columns), None)
+        if start_col is None or end_col is None:
+            continue
+        try:
+            rows = con.execute(
+                'SELECT %s AS s, %s AS e FROM %s WHERE game_id=?'
+                % (start_col, end_col, table), (game_id,)).fetchall()
+        except sqlite3.Error:
+            continue
+        pairs = []
+        for row in rows:
+            try:
+                start = float(row['s'])
+                end = float(row['e'])
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(start) and math.isfinite(end) and end >= start:
+                pairs.append((start, end))
+        if pairs:
+            scale = 1000.0 if ('ms' in start_col.lower() or 'ms' in end_col.lower()) else 1.0
+            return pairs, table, scale
+    return None, None, None
+
+
+def _coverage_events(con, game_id):
+    try:
+        rows = con.execute(
+            "SELECT json FROM events WHERE game_id=?"
+            " AND kind IN ('coverage', 'intervals', 'heartbeat')",
+            (game_id,)).fetchall()
+    except sqlite3.Error:
+        return None
+    pairs = []
+    for row in rows:
+        found = _intervals(_load_json(row['json']))
+        if found:
+            pairs.extend(found)
+    return pairs or None
+
+
+def _coverage_result(pairs, source, meta, duration, scale=None):
+    if not pairs:
+        return None
+    merged = _merge_intervals(pairs)
+    if scale is None:
+        max_abs = max(abs(value) for pair in merged for value in pair)
+        scale = 1000.0 if max_abs > 1e11 else 1.0
+    intervals = [{'start': round(start / scale, 3), 'end': round(end / scale, 3)}
+                 for start, end in merged]
+    covered = sum(end - start for start, end in merged) / scale
+    ratio = None
+    if isinstance(duration, (int, float)) and duration > 0:
+        ratio = max(0.0, min(1.0, covered / float(duration)))
+    adequate = None
+    if isinstance(meta, dict):
+        for key in ('observedRatio', 'ratio', 'coverage'):
+            value = meta.get(key)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                ratio = max(0.0, min(1.0, float(value)))
+                break
+        value = meta.get('coveredSeconds', meta.get('covered_seconds'))
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            covered = float(value)
+        flag = meta.get('adequate')
+        if isinstance(flag, bool):
+            adequate = flag
+    if adequate is None:
+        if ratio is not None:
+            adequate = ratio >= COVERAGE_ADEQUATE_RATIO
+        else:
+            adequate = covered >= COVERAGE_MIN_SECONDS
+    return {
+        'available': True,
+        'source': source,
+        'intervals': intervals,
+        'coveredSeconds': round(covered, 3),
+        'observedRatio': None if ratio is None else round(ratio, 3),
+        'adequate': bool(adequate),
+    }
+
+
+def _meta_scale(raw):
+    """Detect millisecond intervals from explicit ``*Ms``/``*_ms`` keys."""
+    if not isinstance(raw, dict):
+        return None
+    if any(key in raw for key in ('startMs', 'start_ms', 'endMs', 'end_ms')):
+        return 1000.0
+    for key in ('intervals', 'coverage', 'periods', 'windows'):
+        value = raw.get(key)
+        if isinstance(value, (list, tuple)):
+            for item in value:
+                if isinstance(item, dict) and any(
+                        name in item for name in ('startMs', 'start_ms', 'endMs', 'end_ms')):
+                    return 1000.0
+            break
+    return None
+
+
+def game_coverage(con, game_id, duration=None, timeline_module=None):
+    """Best-effort collection coverage for one game.
+
+    Tries, in order: an optional ``timeline.coverage(game_id)`` API (from
+    ``timeline_module`` when supplied), an intervals/coverage table, then
+    coverage events carrying interval payloads. Returns ``None`` when nothing
+    was recorded; never invents coverage.
+    """
+    raw = _coverage_api_raw(game_id, timeline_module)
+    pairs = None
+    source = 'timeline.coverage'
+    scale = _meta_scale(raw)
+    meta = raw if isinstance(raw, dict) else None
+    pairs = _intervals(raw)
+    if not pairs:
+        pairs, table, table_scale = _coverage_table(con, game_id)
+        if pairs:
+            source = 'intervals:%s' % table
+            scale = table_scale
+        else:
+            pairs = _coverage_events(con, game_id)
+            scale = None
+            if pairs:
+                source = 'coverage_events'
+    if not pairs:
+        return None
+    return _coverage_result(pairs, source, meta, duration, scale)
+
+
+def _game_duration(game):
+    started_at = _num(game.get('started_at'))
+    ended_at = _num(game.get('ended_at'))
+    if started_at is None or ended_at is None or ended_at <= started_at:
+        return None
+    return (ended_at - started_at) / 1000.0
+
+
+def _game_versions(game):
+    catalog = None
+    for key in ('catalog_version', 'catalogVersion', 'items_version', 'itemVersion'):
+        if game.get(key):
+            catalog = _text(game.get(key), 64)
+            break
+    rules = None
+    for key in ('rules_version', 'rulesVersion', 'rule_version', 'ruleVersion'):
+        if game.get(key):
+            rules = _text(game.get(key), 64)
+            break
+    patch = None
+    for key in ('patch', 'game_version', 'gameVersion'):
+        if game.get(key):
+            patch = _text(game.get(key), 64)
+            break
+    return {
+        'catalog': catalog,
+        'rules': rules,
+        'patch': patch,
+        'available': bool(catalog or rules),
+    }
+
+
+def _objective_is_outcome(event):
+    if event.get('kind') in ('objective_kill', 'objective_outcome'):
+        return True
+    data = _load_json(event.get('json'))
+    if isinstance(data, dict):
+        for key in ('killed', 'slain', 'secured', 'taken', 'outcome', 'objectiveKill'):
+            if data.get(key) is True:
+                return True
+        if data.get('secondsLeft') is not None:
+            return False
+    label = event.get('label')
+    if isinstance(label, str) and OUTCOME_RE.search(label):
+        return True
+    return False
+
+
 def _fetch_events(con, game_id):
     try:
         rows = con.execute(
@@ -129,11 +427,25 @@ def _fetch_inference(con, game_id):
     return [dict(r) for r in rows]
 
 
-def _fetch_history(con, limit):
+def _fetch_history(con, limit, before_ended_at=None, before_id=None):
+    """Ended games strictly older than the reviewed game.
+
+    History is anchored to the reviewed game: games played afterwards are
+    never mixed in, whatever order they were reviewed in.
+    """
     try:
-        rows = con.execute(
-            'SELECT id, champ, started_at, ended_at FROM games WHERE ended_at IS NOT NULL'
-            ' ORDER BY ended_at DESC, id DESC LIMIT ?', (limit,)).fetchall()
+        if before_ended_at is None:
+            rows = con.execute(
+                'SELECT id, champ, started_at, ended_at FROM games'
+                ' WHERE ended_at IS NOT NULL ORDER BY ended_at DESC, id DESC LIMIT ?',
+                (limit,)).fetchall()
+        else:
+            rows = con.execute(
+                'SELECT id, champ, started_at, ended_at FROM games'
+                ' WHERE ended_at IS NOT NULL'
+                ' AND (ended_at < ? OR (ended_at = ? AND id < ?))'
+                ' ORDER BY ended_at DESC, id DESC LIMIT ?',
+                (before_ended_at, before_ended_at, before_id or 0, limit)).fetchall()
     except sqlite3.Error:
         return []
     games = []
@@ -274,16 +586,21 @@ def _collect_stats(events, advice, inference, history, item_names, item_into, it
                 removals.append({'iid': iid, 'count': count, 'clock': event['clock']})
         previous = signature
 
-    objectives = []
+    reminders = []
+    outcomes = []
     for event in events:
-        if event.get('kind') != 'objective':
+        if event.get('kind') not in _OBJECTIVE_KINDS:
             continue
         t = _num(event.get('t_game'))
-        objectives.append({
+        entry = {
             't': t,
             'clock': _fmt(t) if t is not None else None,
             'label': _text(event.get('label'), 120) or 'objective window',
-        })
+        }
+        if _objective_is_outcome(event):
+            outcomes.append(entry)
+        else:
+            reminders.append(entry)
 
     event_kinds = {}
     for event in events:
@@ -316,7 +633,9 @@ def _collect_stats(events, advice, inference, history, item_names, item_into, it
         'baseline': baseline,
         'additions': additions,
         'removals': removals,
-        'objectives': objectives,
+        'objectives': reminders,
+        'objective_reminders': reminders,
+        'objective_outcomes': outcomes,
         'event_kinds': event_kinds,
         'event_count': len(events),
         'advice_count': len(advice),
@@ -329,7 +648,19 @@ def _collect_stats(events, advice, inference, history, item_names, item_into, it
         'history_with_clocks': len(history_with_clocks),
         'history_two_early': len(history_two_early),
         'history_two_early_ids': [g['id'] for g in history_two_early],
+        'coverage': None,
+        'coverage_adequate': False,
+        'versions': {'catalog': None, 'rules': None, 'patch': None, 'available': False},
     }
+
+
+def _coverage_evidence(coverage):
+    if not coverage:
+        return 'coverage: not recorded'
+    ratio = coverage.get('observedRatio')
+    if ratio is not None:
+        return 'coverage %d%% of the recorded session' % round(ratio * 100)
+    return 'coverage: %gs recorded' % round(coverage.get('coveredSeconds') or 0)
 
 
 def _p_early_deaths(s):
@@ -398,16 +729,28 @@ def _p_late_deaths(s):
 
 
 def _p_objective_coverage(s):
-    if s['objectives']:
+    if s['objective_reminders'] or s['objective_outcomes']:
         return None
+    evidence = [
+        '0 objective-window reminders recorded for this game',
+        '%d timeline events recorded in total' % s['event_count'],
+    ]
+    if not s['coverage_adequate']:
+        evidence.append(_coverage_evidence(s.get('coverage')))
+        return _prio(
+            'objective_coverage',
+            'Objective data was incomplete',
+            'No objective-window reminders or outcomes were recorded, and collection coverage'
+            ' was not adequate, so objective setup cannot be reviewed. This is a data-quality'
+            ' finding, not a performance result: keep the collector running through the whole'
+            ' game before drawing conclusions.',
+            evidence, 'data quality')
     return _prio(
         'objective_coverage',
         'Review objective setup',
         'Next game, note every dragon and Baron timer: path toward the objective before it'
         ' opens and reset beforehand instead of reacting after it spawns.',
-        ['0 objective-window events recorded for this game',
-         '%d timeline events recorded in total' % s['event_count']],
-        'this game')
+        evidence, 'this game')
 
 
 def _p_item_timing(s):
@@ -459,13 +802,27 @@ def _p_first_death(s):
 def _p_no_deaths(s):
     if s['deaths']:
         return None
+    if not s['coverage_adequate']:
+        return _prio(
+            'no_deaths',
+            'No deaths recorded — coverage incomplete',
+            'No deaths were recorded, but collection coverage for this game was not adequate,'
+            ' so a clean death record cannot be concluded. This is a data-quality finding, not'
+            ' a performance result: keep the collector running and re-check coverage before'
+            ' drawing conclusions.',
+            ['0 deaths recorded', _coverage_evidence(s.get('coverage'))],
+            'data quality')
+    evidence = ['0 deaths recorded']
+    coverage = s.get('coverage') or {}
+    if coverage.get('observedRatio') is not None:
+        evidence.append('observed across %d%% of the recorded session'
+                        % round(coverage['observedRatio'] * 100))
     return _prio(
         'no_deaths',
         'Keep the clean death record',
-        'No deaths were recorded. Identify which decisions kept the game safe and repeat them'
-        ' in the next game.',
-        ['0 deaths recorded'],
-        'this game')
+        'No deaths were observed while collection coverage was adequate. Identify which'
+        ' decisions kept the game safe and repeat them in the next game.',
+        evidence, 'this game')
 
 
 def _p_advice_review(s):
@@ -489,7 +846,8 @@ def _p_tracking(s):
         'This review can only cite recorded events. Note damage, vision, and objective'
         ' participation during the next game so later reviews can use them.',
         ['%d timeline events and %d advice entries recorded'
-         % (s['event_count'], s['advice_count'])],
+         % (s['event_count'], s['advice_count']),
+         _coverage_evidence(s.get('coverage'))],
         'next game')
 
 
@@ -551,6 +909,20 @@ def _build_observations(game, stats, duration, item_names):
             'duration',
             'Observed session length %s (first timeline observation to game end).' % _fmt(duration)))
 
+    coverage = stats.get('coverage')
+    if coverage is None:
+        observations.append(_obs(
+            'coverage', 'Collection coverage: not recorded for this game.'))
+    else:
+        ratio = coverage.get('observedRatio')
+        bits = []
+        if ratio is not None:
+            bits.append('%d%% of the recorded session' % round(ratio * 100))
+        bits.append('%gs covered' % round(coverage.get('coveredSeconds') or 0))
+        bits.append('source: %s' % coverage.get('source'))
+        observations.append(_obs(
+            'coverage', 'Collection coverage: %s.' % ', '.join(bits)))
+
     if stats['event_count']:
         breakdown = ', '.join('%s %d' % (kind, count)
                               for kind, count in sorted(stats['event_kinds'].items()))
@@ -598,14 +970,24 @@ def _build_observations(game, stats, duration, item_names):
                 'Items completed: none identified across %d inventory-change event(s).'
                 % stats['item_events']))
 
-    if stats['objectives']:
+    if stats['objective_reminders']:
         listed = '; '.join('%s at %s' % (o['label'], o['clock'] or 'unknown time')
-                           for o in stats['objectives'][:MAX_LISTED])
+                           for o in stats['objective_reminders'][:MAX_LISTED])
         observations.append(_obs(
-            'objectives', 'Objective windows recorded: %s.' % listed))
+            'objective_reminders',
+            'Objective-window reminders recorded: %s.' % listed))
     else:
         observations.append(_obs(
-            'objectives', 'Objective windows: none recorded.'))
+            'objective_reminders', 'Objective-window reminders: none recorded.'))
+
+    if stats['objective_outcomes']:
+        listed = '; '.join('%s at %s' % (o['label'], o['clock'] or 'unknown time')
+                           for o in stats['objective_outcomes'][:MAX_LISTED])
+        observations.append(_obs(
+            'objective_outcomes', 'Objective outcomes recorded: %s.' % listed))
+    else:
+        observations.append(_obs(
+            'objective_outcomes', 'Objective outcomes: none recorded.'))
 
     if stats['advice_count']:
         breakdown = ', '.join('%s %d' % (kind, count)
@@ -625,11 +1007,39 @@ def _build_observations(game, stats, duration, item_names):
                stats['inference_used'], stats['inference_limit'])))
     else:
         observations.append(_obs('inference', 'Inference: no requests recorded.'))
+
+    versions = stats.get('versions') or {}
+    if versions.get('available'):
+        bits = []
+        if versions.get('catalog'):
+            bits.append('catalog %s' % versions['catalog'])
+        if versions.get('rules'):
+            bits.append('rules %s' % versions['rules'])
+        if versions.get('patch'):
+            bits.append('patch %s' % versions['patch'])
+        observations.append(_obs('versions', 'Catalog/rules version: %s.' % ', '.join(bits)))
+    else:
+        observations.append(_obs(
+            'versions',
+            'Catalog/rules version: not recorded for this game (current catalog used).'))
     return observations
 
 
 def _build_unavailable(stats, duration):
     unavailable = list(UNAVAILABLE_BASE)
+    coverage = stats.get('coverage')
+    if coverage is None:
+        unavailable.append(
+            'Collection coverage was not recorded, so missing observations cannot be'
+            ' distinguished from clean play.')
+    elif not coverage.get('adequate'):
+        unavailable.append(
+            'Collection coverage was incomplete (%s); performance conclusions including'
+            ' zero-death praise were withheld.' % _coverage_evidence(coverage))
+    if not (stats.get('versions') or {}).get('available'):
+        unavailable.append(
+            'Item catalog and game-rules version were not recorded for this game; item names'
+            ' and completion classification may come from the current catalog.')
     if not stats['item_events']:
         unavailable.append(
             'No inventory-change events were recorded, so item timing could not be reviewed.')
@@ -641,8 +1051,38 @@ def _build_unavailable(stats, duration):
             'Session duration could not be computed (missing start or end timestamp).')
     if stats['history_with_clocks'] < 2:
         unavailable.append(
-            'Cross-game death timing needs at least two ended games with recorded death clocks.')
+            'Cross-game death timing needs at least two ended games with recorded death clocks'
+            ' before the reviewed game.')
     return unavailable
+
+
+def _build_data_quality(stats, duration):
+    coverage = stats.get('coverage')
+    notes = []
+    if coverage is None:
+        level = 'unavailable'
+        notes.append('Collection coverage was not recorded; missing deaths, items, and'
+                     ' objective windows cannot be distinguished from clean play.')
+    elif coverage.get('adequate'):
+        level = 'ok'
+        ratio = coverage.get('observedRatio')
+        notes.append('Collection coverage was adequate%s.'
+                     % ('' if ratio is None else ' (%d%%)' % round(ratio * 100)))
+    else:
+        level = 'partial'
+        ratio = coverage.get('observedRatio')
+        notes.append('Collection coverage was incomplete%s; performance conclusions'
+                     ' (including zero-death praise) were withheld.'
+                     % ('' if ratio is None else ' (%d%%)' % round(ratio * 100)))
+    if not stats['item_events']:
+        notes.append('No inventory-change events were recorded, so purchase timing was not'
+                     ' reviewed.')
+    if duration is None:
+        notes.append('Session duration could not be computed.')
+    if not (stats.get('versions') or {}).get('available'):
+        notes.append('Catalog/rules version was not recorded; item names and completion'
+                     ' classification come from the current catalog.')
+    return {'level': level, 'coverage': coverage, 'notes': notes}
 
 
 def build_review(game_id=None, item_names=None, item_into=None, item_costs=None):
@@ -671,24 +1111,27 @@ def build_review(game_id=None, item_names=None, item_into=None, item_costs=None)
         game = dict(row)
         if game.get('ended_at') is None:
             return _no_review('the selected game has not ended yet')
+        duration = _game_duration(game)
         events = _fetch_events(con, game['id'])
         advice = _fetch_advice(con, game['id'])
         inference = _fetch_inference(con, game['id'])
-        history = _fetch_history(con, HISTORY_GAMES)
+        history = _fetch_history(con, HISTORY_GAMES,
+                                 before_ended_at=game.get('ended_at'),
+                                 before_id=game.get('id'))
+        coverage = game_coverage(con, game['id'], duration)
     finally:
         con.close()
 
-    started_at = _num(game.get('started_at'))
-    ended_at = _num(game.get('ended_at'))
-    duration = None
-    if started_at is not None and ended_at is not None and ended_at > started_at:
-        duration = (ended_at - started_at) / 1000.0
-
+    versions = _game_versions(game)
     stats = _collect_stats(events, advice, inference, history,
                            item_names, item_into, item_costs)
+    stats['coverage'] = coverage
+    stats['coverage_adequate'] = bool(coverage and coverage.get('adequate'))
+    stats['versions'] = versions
     observations = _build_observations(game, stats, duration, item_names)
     priorities = _build_priorities(stats)
     unavailable = _build_unavailable(stats, duration)
+    data_quality = _build_data_quality(stats, duration)
 
     return {
         'ok': True,
@@ -706,4 +1149,7 @@ def build_review(game_id=None, item_names=None, item_into=None, item_costs=None)
         'observations': observations,
         'priorities': priorities,
         'unavailable': unavailable,
+        'coverage': coverage,
+        'versions': versions,
+        'dataQuality': data_quality,
     }
