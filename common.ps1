@@ -11,6 +11,11 @@ $script:QueueMap = @{
     450 = 'ARAM'; 700 = 'Clash'; 720 = 'ARAM Clash'; 900 = 'URF'; 1700 = 'Arena'; 1900 = 'URF'
 }
 
+$script:DdragonAssetFiles = @{
+    'item' = 'items.json'
+    'champion' = 'champion.json'
+}
+
 function Get-SpellName {
     param($Id)
     if ($null -eq $Id) { return '-' }
@@ -96,7 +101,9 @@ function Update-DdragonAsset {
     )
     $todo = @()
     foreach ($name in $Names) {
-        $dest = Join-Path $PSScriptRoot ($name + '.json')
+        $file = $name
+        if ($script:DdragonAssetFiles.ContainsKey($name)) { $file = $script:DdragonAssetFiles[$name] }
+        $dest = Join-Path $PSScriptRoot $file
         if ($Force -or -not (Test-Path -LiteralPath $dest)) { $todo += $name }
     }
     if (-not $todo) { return }
@@ -104,8 +111,10 @@ function Update-DdragonAsset {
     try { $ver = (Invoke-RestMethod -Uri 'https://ddragon.leagueoflegends.com/api/versions.json' -TimeoutSec 20)[0] } catch { return }
     if (-not $ver) { return }
     foreach ($name in $todo) {
-        $dest = Join-Path $PSScriptRoot ($name + '.json')
-        $tmp = Join-Path $env:TEMP ("riftsense_" + $name + "_" + [guid]::NewGuid().ToString('N') + ".json")
+        $file = $name
+        if ($script:DdragonAssetFiles.ContainsKey($name)) { $file = $script:DdragonAssetFiles[$name] }
+        $dest = Join-Path $PSScriptRoot $file
+        $tmp = Join-Path $env:TEMP ("riftsense_" + $file + "_" + [guid]::NewGuid().ToString('N') + ".json")
         try {
             Invoke-WebRequest -Uri ("https://ddragon.leagueoflegends.com/cdn/{0}/data/en_US/{1}.json" -f $ver, $name) -OutFile $tmp -TimeoutSec 60 -UseBasicParsing -ErrorAction Stop
             if ((Test-Path -LiteralPath $tmp) -and ((Get-Item -LiteralPath $tmp).Length -gt 0)) {
