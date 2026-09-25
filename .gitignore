@@ -13,6 +13,10 @@ last_run.tmp
 # local timeline database
 ui/data/
 
+# plan editor backup and local write token (runtime, never commit)
+build_intent.txt.bak
+dashboard_token.txt
+
 # downloaded assets (auto-fetched from Data Dragon at runtime)
 champion.json
 items.json

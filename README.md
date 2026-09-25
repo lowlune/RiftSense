@@ -17,7 +17,7 @@ A local League of Legends coaching dashboard. It reads Riot's official Live Clie
 - `agent/lol-coach.md` - the coach agent (system prompt, output format, patch-scoped timers/numbers).
 - `Get-LiveGame.ps1` - compact game-state formatter (players, items, gold, timers, events).
 - `ui/server.py` + `ui/index.html` - small stdlib-only Python server + dashboard (no build step, no npm).
-- `build_intent.txt` - per-champion build plans (`PLAN[Warwick]: ...`; the UI parser also tolerates a legacy `PLAN: ...` default line).
+- `build_intent.txt` - per-champion build plans (`PLAN[Warwick]: ...`). AutoCoach matches `PLAN[Champion]` and `PLAN[default]`; the UI parser also tolerates a legacy bare `PLAN: ...` default line, but the PowerShell path does not - keep using the bracketed form for parity.
 - `knowledge/nunu-modern.md` - the Nunu reference dossier. **Reference only: nothing in the live path loads this file** (see Setup).
 
 ## What leaves your machine
@@ -27,11 +27,26 @@ RiftSense itself is local: the dashboard binds to `127.0.0.1`, there are no acco
 Coaching is optional and provider-based. When `AutoCoach.ps1` runs, it sends the following text to whichever model provider you configured in opencode. The provider handles it under its own hosting, retention, and billing terms, which this repository does not control:
 
 - The live game state formatted by `Get-LiveGame.ps1`: game clock and mode; for you and every player - champion, team, position, level, K/D/A, CS, items and summed item gold (plus current gold, ability ranks and keystone for you); objective timers; and the last eight events with the player names involved.
+- The pre-death history window attached to death reports: the last few observed snapshots (gold, level, K/D/A, CS and item deltas) and recent event lines for the player who died. This is recorded state, not hidden information, but it is sent to the provider.
 - The build-intent block read from `build_intent.txt`.
+- The champion-pack block when a reviewed pack exists for your champion and role: a section-budgeted subset of `knowledge/packs/*.json` (patch-scoped mechanics, decision rules, counters, item notes, derived math, heuristics, statistics and abstention conditions). The content manifest records the pack id/version and the bytes actually injected.
 - The previous coach readout (`coach_latest.txt`), so the model can build on it.
 - The coach agent instructions from `agent/lol-coach.md`.
 
 Nothing else from this repository is sent. If you do not want provider-bound prompts, do not run `AutoCoach.ps1`; the dashboard and local data collection still work (the coach and death panels stay empty). This version has no deterministic local-model mode.
+
+The provider cost meter is an **estimate**: it is derived from opencode session records and can include unrelated sessions, so it is not an exact bill.
+
+## Data retention
+
+Everything RiftSense stores is local and has no automatic expiry - delete the files to clear it:
+
+- `ui/data/` - the timeline SQLite database (games, events, advice, inferences, plan history). Kept until you delete the file; back it up or remove it yourself.
+- `build_intent.txt.bak` - the previous version of your plan, written before each editor save. Add `build_intent.txt` and its `.bak` to any private backup you keep.
+- `coach_latest.txt` / `coach_latest.json`, `death_latest.txt` / `death_latest.json`, `game_epoch.json` - runtime files overwritten as the coach runs.
+- Provider-side prompt retention is governed by the provider you configured, not by this repository.
+
+`.gitignore` excludes all of the runtime files above, `ui/data/`, downloaded `champion.json`/`items.json`, the plan backup `build_intent.txt.bak`, and the local write token `dashboard_token.txt`, so they are not committed by accident.
 
 ## Requirements
 
@@ -40,12 +55,26 @@ Nothing else from this repository is sent. If you do not want provider-bound pro
 - Python 3.10+ (standard library only)
 - PowerShell 5.1+ (uses `curl.exe`, present on Windows 10+)
 
+### Compatibility matrix
+
+Actual execution on Windows, with the currently installed opencode, and in each browser is **unverified in this repository** - this table records the declared intent, not tested support. Run the preflight (dashboard, `/api/health`, and one coach tick) on your machine before relying on a row.
+
+| Component | Intended target | Status |
+|---|---|---|
+| OS | Windows 10/11 | Declared; Linux/macOS unsupported (PowerShell collectors use `curl.exe`, `taskkill.exe`, `$env:TEMP`) |
+| PowerShell | 5.1+ | Declared; 7.x untested |
+| opencode | current CLI with `run --agent --variant` and a configured provider | External assumption; CLI flags/model availability can change - unverified |
+| Python | 3.10+ (stdlib only) | Declared |
+| Browsers (dashboard) | Chromium-family and Firefox current versions | Unverified rendering/behavior |
+| OBS browser source (overlay) | OBS current version, 1280x720+ | Unverified rendering/sizing |
+| Ports | `RIFTSENSE_PORT` affects Python; launcher/AutoCoach default to 7777 | Declared; setting a different port requires the launcher and `AutoCoach.ps1` to be edited together |
+
 ## Setup
 
 1. Copy `agent/lol-coach.md` into your opencode config: `~/.config/opencode/agent/lol-coach.md` (on Windows: `C:\Users\<you>\.config\opencode\agent\lol-coach.md`)
 2. Run `Start-AutoCoach.cmd` - starts the tick loop and death reports
 3. Run `Start-Ui.cmd` - starts the dashboard at http://127.0.0.1:7777
-4. Optional: edit `build_intent.txt` to set your own per-champion plans. Keep the syntax `PLAN[Champion]: Item -> Item ...` at the start of the line (no leading spaces). The UI parser also tolerates a legacy `PLAN: ...` default line, but the PowerShell path does not, so keep using `PLAN[Champion]` for champions.
+4. Optional: edit `build_intent.txt` to set your own per-champion plans. Keep the syntax `PLAN[Champion]: Item -> Item ...` at the start of the line (no leading spaces). AutoCoach matches `PLAN[Champion]` and falls back to `PLAN[default]`; the UI parser also accepts a bare legacy `PLAN: ...` as a default line, but that form is deprecated - use the bracketed form so the dashboard and PowerShell read the same plan.
 
 Champion and item data are downloaded automatically from Data Dragon on first run.
 
@@ -60,7 +89,27 @@ The numbers in both files are patch-scoped (currently patch 26.19, retrieved 202
 
 ### Using champion packs
 
-`knowledge/packs/*.json` are the curated, patch-scoped subsets that the live path actually injects into the inference prompt as a `=== CHAMPION PACK (versioned) ===` block (`AutoCoach.ps1` -> `ui/packs.py`, capped at 1800 characters). The dashboard shows the active pack name and patch in the build strip, and the server exposes `GET /api/packs` and `GET /api/pack?champ=&role=`. The long dossier above remains the reference source; promote lines into a pack when they are verified for the current patch. See `knowledge/packs/README.md` for the schema and contribution rules.
+`knowledge/packs/*.json` are the curated, patch-scoped subsets that the live path actually injects into the inference prompt as a `=== CHAMPION PACK (versioned) ===` block (`AutoCoach.ps1` -> `ui/packs.py`, capped at 1800 characters). Packs use schema `riftsense.pack.v2` and separate **quoted mechanics**, **derived math**, **heuristics**, **statistics**, and **decision rules** so that derived/preference/statistical claims cannot be marked verified. The renderer budgets each section and truncates inside a section rather than dropping whole categories; callers can read the content manifest (pack id/patch, per-section bytes, truncation flags) to see exactly what reached the model. The dashboard shows the active pack name and patch in the build strip, and the server exposes `GET /api/packs` and `GET /api/pack?champ=&role=`. The long dossier above remains the reference source; promote lines into a pack when they are verified for the current patch. See `knowledge/packs/README.md` for the schema, the CLI/JSON contract, and the contribution rules.
+
+Packs can also declare `abstentions` - the missing-field conditions under which the agent must output `ABSTAIN: <missing field>` instead of guessing. Those lines form the start of the abstention ledger; the UI is expected to collect `ABSTAIN:` lines from coach and death output after the game rather than presenting them as another live warning.
+
+### Coach envelope and pack provenance (UI contract)
+
+AutoCoach publishes each result as a `coach_latest.json` / `death_latest.json` envelope (`Publish-Envelope` in `AutoCoach.ps1`) with these fields:
+
+| Field | Meaning |
+|---|---|
+| `schema` | `riftsense.v1` |
+| `kind` | `coach` or `death` |
+| `session` | session id the result belongs to |
+| `seq` | monotonic sequence within the session |
+| `observedGameTime` | game clock of the snapshot the result was based on |
+| `completedAt` | UTC completion timestamp |
+| `status` | `ok` / `failed` / (worker states as added) |
+| `error` | failure reason when `status` is not `ok` |
+| `text` | the `===COACH===` / `===DEATH===` body, including any `ABSTAIN:` lines |
+
+The UI is expected to consume `status`, `error`, `observedGameTime`, `completedAt`, `session` and `seq` instead of equating a readable text file with a healthy, fresh result, and to display the pack id/patch/hash from the content manifest next to the advice. Until that wiring lands, `/api/coach` still serves the text and its file age only.
 
 ## Compliance
 
@@ -68,14 +117,15 @@ RiftSense uses only Riot's official local interfaces: the Live Client Data API (
 
 **A current Riot policy review is required before wider distribution.** The feature-policy matrix below records the intended boundaries; each row still has to be checked against the current published policy:
 
-| Feature category | Treatment in RiftSense |
+| Feature category | Intended boundary - pending verification |
 |---|---|
-| Directly observed, player-visible state | Allowed as observed state; keep provenance and snapshot age. |
-| Deterministic derived summaries (timers, item-gold sums, plan progress) | Allowed, but labeled as derived; never presented as observed facts. |
-| Unobserved positions, vision, enemy cooldowns | Never inferred or exposed as facts; user-confirmed only, otherwise "unknown". |
-| Post-game education | Prioritized over live prescriptive calls where possible. |
-| Automated gameplay actions | Not part of the product; all collectors are read-only. |
-| Community strategy/statistics | Requires provenance, licensing, patch metadata, and moderation. |
+| Directly observed, player-visible state | Intended: observed state only; keep provenance and snapshot age. |
+| Deterministic derived summaries (timers, item-gold sums, plan progress) | Intended: labeled as derived; never presented as observed facts. |
+| Unobserved positions, vision, enemy cooldowns | Intended: never inferred or exposed as facts; user-confirmed only, otherwise "unknown" (packs declare these as abstention conditions). |
+| Post-game education | Intended: prioritized over live prescriptive calls where possible. |
+| Automated gameplay actions | Intended: not part of the product; all collectors are read-only. |
+| Community strategy/statistics | Intended: requires provenance, licensing, patch metadata, and moderation; statistics are always unverified. |
+| Champion packs and third-party content | Intended: only licensed/sourced content, with category separation and attribution; licensing review pending. |
 
 ## License
 
