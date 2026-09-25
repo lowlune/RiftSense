@@ -67,6 +67,28 @@
   .mutebtn { background: transparent; border: 1px solid rgba(255,255,255,.08); color: var(--dim); border-radius: 7px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 13px; }
   .mutebtn:hover { color: var(--gold); border-color: var(--line); }
   .mutebtn.off { color: var(--faint); }
+  .health { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+  .hbadge { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); border: 1px solid rgba(255,255,255,.08); border-radius: 7px; padding: 2px 6px; white-space: nowrap; }
+  .hbadge i { font-size: 11px; }
+  .hbadge.st-live { color: var(--green); border-color: rgba(79,203,124,.32); }
+  .hbadge.st-wait { color: var(--amber); border-color: rgba(232,180,74,.3); }
+  .hbadge.st-dead { color: var(--red); border-color: rgba(224,93,111,.35); }
+  .hbadge.st-info { color: var(--blue); border-color: rgba(77,157,224,.3); }
+  .hbadge.st-mute { color: var(--faint); }
+  .pill-age { color: var(--dim); font-weight: 400; letter-spacing: .04em; text-transform: none; }
+  .pill-age.warn { color: var(--amber); }
+  .pill-age.err { color: var(--red); }
+  .ptitle .age.ok, #planStat.ok, #costAge.ok { color: var(--green); }
+  .ptitle .age.warn, #planStat.warn, #costAge.warn { color: var(--amber); }
+  .ptitle .age.err, #planStat.err, #costAge.err { color: var(--red); }
+  .planstat { font-size: 9px; font-weight: 700; letter-spacing: .08em; color: var(--dim); white-space: nowrap; }
+  .planstat.ok { color: var(--green); }
+  .planstat.warn { color: var(--amber); }
+  .planstat.err { color: var(--red); }
+  .shell.stale #clock { opacity: .6; }
+  .shell.stale .obj .val, .shell.stale .obj i { color: var(--dim) !important; opacity: .45; animation: none; }
+  .shell.stale .teams, .shell.stale .hcost .amount { opacity: .55; }
+  .shell.stale .eventsline { opacity: .55; }
   @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }
 
   .buildstrip { flex: 0 0 auto; display: flex; align-items: center; flex-wrap: wrap; row-gap: 4px; gap: 10px; padding: 0 6px; }
@@ -202,20 +224,27 @@
 <div class="shell">
   <div class="topbar">
     <div id="clock">--:--</div>
-    <div class="livepill"><i class="ph-fill ph-broadcast st-wait" id="statIcon"></i><span id="statusText">connecting</span></div>
+    <div class="livepill"><i class="ph-fill ph-broadcast st-wait" id="statIcon"></i><span id="statusText">connecting</span><span class="pill-age" id="gameAge"></span></div>
+    <div class="health" id="health" title="">
+      <span class="hbadge st-mute" id="hbConn"><i class="ph-fill ph-broadcast"></i><span id="hbConnText">connecting</span></span>
+      <span class="hbadge st-mute" id="hbAge"><i class="ph-fill ph-timer"></i><span id="hbAgeText">age —</span></span>
+      <span class="hbadge st-mute" id="hbPatch"><i class="ph-fill ph-tag"></i><span id="hbPatchText">patch —</span></span>
+      <span class="hbadge st-mute" id="hbIdentity" style="display:none"><i class="ph-fill ph-user-circle"></i><span id="hbIdentityText">identity —</span></span>
+    </div>
     <div class="obj" id="objDragon"><i class="ph-fill ph-fire"></i><span class="lab">DRG</span><span class="val" id="dragonVal">--:--</span></div>
     <div class="obj" id="objBaron"><i class="ph-fill ph-skull"></i><span class="lab">BRN</span><span class="val" id="baronVal">--:--</span></div>
     <div class="obj gold" id="objPhase"><i class="ph-fill ph-clock"></i><span class="val" id="phaseVal">—</span></div>
     <div class="tspacer"></div>
     <div id="summoner">—</div>
     <span class="diag" id="diag"></span>
-    <div class="hcost"><span class="amount" id="costTotal">$—</span><span class="sub" id="costSub">—</span></div>
+    <div class="hcost"><span class="amount" id="costTotal">$—</span><span class="sub" id="costSub">—</span><span class="sub" id="costAge"></span></div>
     <span class="audiostate off" id="audioState">audio off</span>
     <button class="mutebtn" id="muteBtn" title="toggle sound"><i class="ph-fill ph-speaker-high" id="muteIcon"></i></button>
   </div>
 
   <div class="buildstrip" id="buildStrip" style="display:none">
     <span class="blabel"><i class="ph-fill ph-hammer"></i>BUILD</span>
+    <span class="planstat" id="planStat"></span>
     <div class="bitems" id="buildItems"></div>
     <span class="berr" id="buildErr"></span>
   </div>
@@ -295,6 +324,14 @@ let audioCtx = null;
 let audioReady = false;
 let soundOn = true;
 const panelErrors = new Map();
+const panelInfo = new Map();
+const panelAges = new Map();
+let healthData = null;
+let healthAvailable = null;
+let healthAt = 0;
+let serverReachable = null;
+let gameStatus = 'connecting';
+let lastHealthDraw = 0;
 
 const OBJECTIVES = ['dragon soul', 'elder dragon', 'rift herald', 'voidgrubs', 'rift scuttler', 'scuttle crab', 'blue buff', 'red buff', 'inhibitor', 'dragon', 'baron', 'herald', 'grubs', 'scuttle', 'elder', 'soul', 'turret', 'turrets', 'plates', 'raptors', 'wolves', 'gromp', 'krugs'];
 
@@ -429,6 +466,231 @@ function renderDiag(){
   el.classList.add('show');
 }
 
+const PANEL_LABELS = { game: 'game', coach: 'coach', death: 'death', cost: 'cost', plan: 'plan' };
+
+function relAge(sec){
+  const n = num(sec);
+  if (n == null || !isFinite(n) || n < 0) return '\u2014';
+  if (n < 1) return '<1s';
+  if (n < 60) return Math.round(n) + 's';
+  const m = Math.floor(n / 60);
+  if (m < 60) return m + 'm';
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return h + 'h' + (rm ? ' ' + rm + 'm' : '');
+}
+
+function setSourceAge(key, baseSec){
+  if (baseSec == null) { panelAges.delete(key); return; }
+  panelAges.set(key, { base: baseSec, at: performance.now() });
+}
+function liveAge(key){
+  const e = panelAges.get(key);
+  if (!e) return null;
+  return e.base + (performance.now() - e.at) / 1000;
+}
+
+function markPanel(key, st, detail){
+  panelInfo.set(key, { st: String(st || 'unknown'), detail: String(detail || ''), at: performance.now() });
+  if (st === 'ok' || st === 'no_game' || st === 'missing') panelOk(key);
+  else panelFail(key, detail ? (st + ': ' + detail) : st);
+  updateHealthUI(true);
+}
+function setPanelAge(id, text, cls){
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (text != null) el.textContent = text;
+  el.classList.remove('ok', 'warn', 'err');
+  if (cls) el.classList.add(cls);
+}
+function setPlanStat(text, cls){
+  const el = document.getElementById('planStat');
+  if (!el) return;
+  if (text != null) el.textContent = text;
+  el.classList.remove('ok', 'warn', 'err');
+  if (cls) el.classList.add(cls);
+}
+
+function dataAgeSec(){
+  const inGame = !!(state.inGame && num(state.time) != null);
+  if (inGame && lastGoodAt > 0) return (performance.now() - lastGoodAt) / 1000;
+  const lcu = healthData && isObj(healthData.lcu) ? healthData.lcu : null;
+  if (lcu && lcu.status === 'live') {
+    const base = num(lcu.lastSnapshotAgeSec);
+    if (base != null) {
+      const since = healthAt > 0 ? Math.max(0, (performance.now() - healthAt) / 1000) : 0;
+      return base + since;
+    }
+  }
+  return null;
+}
+
+function hardGameFailure(){
+  return gameStatus === 'api_error' || gameStatus === 'offline' || gameStatus === 'malformed';
+}
+
+function isStale(){
+  if (!state.inGame || num(state.time) == null) return false;
+  if (hardGameFailure()) return true;
+  const age = dataAgeSec();
+  return age == null || age > FRESH_WINDOW_MS / 1000;
+}
+
+function connectionInfo(){
+  if (serverReachable === false) return { cls: 'st-dead', text: 'offline', detail: 'UI server unreachable' };
+  if (serverReachable === null) return { cls: 'st-mute', text: 'connecting', detail: 'waiting for first response' };
+  if (gameStatus === 'api_error') return { cls: 'st-wait', text: 'api error', detail: 'Live Client API request failed' };
+  if (state.inGame && num(state.time) != null) {
+    const age = dataAgeSec();
+    if (isStale()) return { cls: 'st-wait', text: 'stale', detail: 'last live snapshot ' + (age != null ? relAge(age) : 'unknown') + ' ago' };
+    return { cls: 'st-live', text: 'live', detail: 'fresh snapshot' };
+  }
+  if (gameStatus === 'no_game') return { cls: 'st-mute', text: 'no game', detail: 'client reachable, no active game' };
+  return { cls: 'st-info', text: 'server live', detail: 'dashboard server reachable' };
+}
+
+function patchInfo(){
+  const h = healthData && isObj(healthData) ? healthData : null;
+  const v = h && validVersion(h.assetVersion) ? h.assetVersion : (h && validVersion(h.version) ? h.version : null);
+  const cv = h && validVersion(h.championVersion) ? h.championVersion : null;
+  const iv = h && validVersion(h.itemVersion) ? h.itemVersion : null;
+  if (v) {
+    return {
+      text: 'patch ' + v,
+      cls: (h && h.patchMismatch) ? 'st-wait' : 'st-info',
+      mismatch: !!(h && h.patchMismatch),
+      title: 'assets ' + v + (cv || iv ? ' (champion ' + (cv || '?') + ', items ' + (iv || '?') + ')' : '')
+        + ((h && h.patchMismatch) ? ' — champion/item versions differ' : '')
+    };
+  }
+  if (versionResolved && validVersion(cdnVersion)) return { text: 'patch ' + cdnVersion, cls: 'st-info', mismatch: false, title: 'asset version from /api/version' };
+  return { text: 'patch unknown', cls: 'st-mute', mismatch: false, title: 'asset version unknown (server has no catalog)' };
+}
+
+function identityInfo(){
+  const id = isObj(state.identity) ? state.identity : null;
+  const st = id && typeof id.status === 'string' ? id.status : 'unknown';
+  if (st === 'resolved') return { text: 'identity ok', cls: 'st-live', title: 'active player matched (' + (id.method || 'unknown method') + ')' };
+  if (st === 'ambiguous') return { text: 'identity ambiguous', cls: 'st-dead', title: 'multiple players match: ' + ((id.candidates || []).join(', ') || 'unknown') };
+  if (st === 'unresolved') return { text: 'identity unknown', cls: 'st-wait', title: 'active player could not be matched to a roster row' };
+  return { text: 'identity unknown', cls: 'st-mute', title: 'no identity data in game snapshot' };
+}
+
+function paintPanelAges(){
+  const coach = panelInfo.get('coach');
+  if (coach && coach.st === 'ok') {
+    const a = liveAge('coach');
+    setPanelAge('coachAge', a == null ? 'source ok' : relAge(a) + ' old', a != null && a > 90 ? 'warn' : 'ok');
+  }
+  const plan = panelInfo.get('plan');
+  if (plan && plan.st === 'ok') {
+    const a = liveAge('plan');
+    setPlanStat('plan: ok' + (a != null ? ' \u00b7 checked ' + relAge(a) : ''), a != null && a > 45 ? 'warn' : 'ok');
+  }
+  const cost = panelInfo.get('cost');
+  if (cost && cost.st === 'ok') {
+    const a = liveAge('cost');
+    setPanelAge('costAge', a == null ? 'checked' : 'checked ' + relAge(a), a != null && a > 30 ? 'warn' : 'ok');
+  }
+}
+
+function renderHealthTooltip(){
+  const el = document.getElementById('health');
+  if (!el) return;
+  const lines = [];
+  for (const key of ['game', 'coach', 'death', 'cost', 'plan']) {
+    const info = panelInfo.get(key);
+    if (!info) { lines.push(PANEL_LABELS[key] + ': unknown'); continue; }
+    const a = relAge((performance.now() - info.at) / 1000);
+    lines.push(PANEL_LABELS[key] + ': ' + info.st + (info.detail ? ' \u2014 ' + info.detail : '') + ' (' + a + ' ago)');
+  }
+  if (healthData) {
+    const db = isObj(healthData.db) ? healthData.db : null;
+    const lcu = isObj(healthData.lcu) ? healthData.lcu : null;
+    lines.push('server: up ' + relAge(healthData.uptimeSec) + (healthData.ok ? '' : ' \u00b7 degraded: ' + ((healthData.problems || []).join('/') || '?')));
+    lines.push('db: ' + (db ? (db.ok ? 'ok' : (db.status || 'error') + (db.error ? ' \u2014 ' + db.error : '')) : 'unknown'));
+    if (lcu) lines.push('lcu: ' + (lcu.status || 'unknown') + (lcu.reachable === false ? ' (unreachable)' : ''));
+    if (healthData.sessionId) lines.push('session: ' + healthData.sessionId);
+  } else if (healthAvailable === false) {
+    lines.push('server: /api/health unavailable (older server)');
+  }
+  el.title = lines.join('\n');
+}
+
+function updateHealthUI(force){
+  const now = performance.now();
+  if (!force && now - lastHealthDraw < 400) return;
+  lastHealthDraw = now;
+  const conn = connectionInfo();
+  const connEl = document.getElementById('hbConn');
+  if (connEl) {
+    connEl.className = 'hbadge ' + conn.cls;
+    connEl.title = conn.detail || '';
+  }
+  const connText = document.getElementById('hbConnText');
+  if (connText) connText.textContent = conn.text;
+
+  const inGame = !!(state.inGame && num(state.time) != null);
+  const age = dataAgeSec();
+  const ageEl = document.getElementById('hbAge');
+  const ageText = document.getElementById('hbAgeText');
+  if (ageEl && ageText) {
+    let acls = 'st-mute', atext = 'age \u2014';
+    if (inGame && age != null) {
+      if (isStale()) { acls = 'st-wait'; atext = 'stale ' + relAge(age); }
+      else { acls = 'st-live'; atext = 'age ' + relAge(age); }
+    }
+    ageEl.className = 'hbadge ' + acls;
+    ageText.textContent = atext;
+  }
+
+  const p = patchInfo();
+  const patchEl = document.getElementById('hbPatch');
+  if (patchEl) {
+    patchEl.className = 'hbadge ' + p.cls;
+    patchEl.title = p.title || '';
+  }
+  const patchText = document.getElementById('hbPatchText');
+  if (patchText) patchText.textContent = p.mismatch ? 'patch mismatch' : p.text;
+
+  const identEl = document.getElementById('hbIdentity');
+  if (identEl) {
+    if (inGame) {
+      const id = identityInfo();
+      identEl.style.display = '';
+      identEl.className = 'hbadge ' + id.cls;
+      identEl.title = id.title || '';
+      const t = document.getElementById('hbIdentityText');
+      if (t) t.textContent = id.text;
+    } else {
+      identEl.style.display = 'none';
+    }
+  }
+
+  const pillAge = document.getElementById('gameAge');
+  if (pillAge) {
+    if (inGame && age != null) {
+      pillAge.textContent = '\u00b7 ' + relAge(age);
+      pillAge.className = 'pill-age' + ((gameStatus === 'api_error' || isStale()) ? ' warn' : '');
+    } else {
+      pillAge.textContent = '';
+    }
+  }
+
+  paintPanelAges();
+  renderHealthTooltip();
+}
+
+function applyStaleUI(){
+  const stale = isStale();
+  const shell = document.querySelector('.shell');
+  if (shell) shell.classList.toggle('stale', stale);
+  const clock = document.getElementById('clock');
+  if (clock) clock.classList.toggle('stale', stale);
+  state.stale = stale;
+  updateHealthUI(true);
+}
+
 function tidy(s){ let x = String(s ?? ''); for (const [re, rep] of MOJIBAKE) x = x.replace(re, rep); return x; }
 const esc = s => tidy(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = s => {
@@ -453,6 +715,7 @@ async function fetchJson(url, timeoutMs){
   const to = setTimeout(() => { try { ac.abort(); } catch (e) {} }, timeoutMs || 8000);
   try {
     const r = await fetch(url, { cache: 'no-store', signal: ac.signal });
+    serverReachable = true;
     let json = null, badJson = false;
     try { json = await r.json(); } catch (e) { badJson = true; }
     return { status: r.status, ok: r.ok, json: json, badJson: badJson };
@@ -583,17 +846,21 @@ function dragonTiming(s){
   return { next, total: kills.length, soulText, countsText, elderNext };
 }
 
-function renderTopbar(s, now){
+function renderTopbar(s, now, stale){
   const t = num(now);
   const dt = dragonTiming(s);
   const dEl = document.getElementById('objDragon');
-  if (dEl) dEl.title = dt.soulText + (dt.elderNext ? ' · elder next' : '') + (dt.countsText ? ' · ' + dt.countsText : '');
+  if (dEl) dEl.title = dt.soulText + (dt.elderNext ? ' · elder next' : '') + (dt.countsText ? ' · ' + dt.countsText : '') + (stale ? ' — STALE, frozen at ' + (t == null ? '?' : fmt(t)) : '');
   const val = (id, at) => {
     const el = document.getElementById(id);
-    if (t == null) { el.classList.remove('up', 'soon'); return '--:--'; }
+    if (t == null) { el.classList.remove('up', 'soon', 'stale'); return '--:--'; }
     const left = at - t;
-    el.classList.toggle('up', left <= 0);
-    el.classList.toggle('soon', left > 0 && left <= 60);
+    el.classList.remove('up', 'soon');
+    el.classList.toggle('stale', !!stale);
+    if (!stale) {
+      el.classList.toggle('up', left <= 0);
+      el.classList.toggle('soon', left > 0 && left <= 60);
+    }
     return left <= 0 ? 'UP' : fmt(left);
   };
   document.getElementById('dragonVal').textContent = val('objDragon', dt.next) + (dt.total ? ' (' + dt.total + ')' : '');
@@ -601,6 +868,8 @@ function renderTopbar(s, now){
     .map(k => num(isObj(k) ? k.t : k)).filter(v => v != null).sort((a, b) => a - b);
   const bNext = bkr.length ? bkr[bkr.length - 1] + 360 : 1200;
   document.getElementById('baronVal').textContent = val('objBaron', bNext);
+  const phaseEl = document.getElementById('objPhase');
+  if (phaseEl) phaseEl.classList.toggle('stale', !!stale && t != null);
   document.getElementById('phaseVal').textContent = t == null ? '—' : (t < 14*60 ? 'EARLY' : (t < 25*60 ? 'MID' : 'LATE'));
 }
 
@@ -745,14 +1014,16 @@ function renderIdle(kind, msg){
   document.getElementById('idleMsg').style.display = 'flex';
   document.getElementById('idleMsg').innerHTML = esc(msg);
   document.querySelector('.teams').style.display = 'none';
+  document.querySelector('.shell').classList.remove('stale');
+  updateHealthUI(true);
 }
 
-function gameTrouble(statusText, detail){
-  panelFail('game', detail || statusText);
+function gameTrouble(statusText, panelStatus, detail){
+  gameStatus = panelStatus || 'error';
+  markPanel('game', gameStatus, detail || statusText);
   setStatus('dead', statusText);
   if (state.inGame) {
-    state.stale = true;
-    document.getElementById('clock').classList.add('stale');
+    applyStaleUI();
     return;
   }
   renderIdle('error', statusText + ' — retrying…');
@@ -788,11 +1059,12 @@ function render(s){
 }
 
 function handleGame(j){
-  if (!isObj(j)) { gameTrouble('UI server sent malformed data'); return; }
+  if (!isObj(j)) { gameTrouble('UI server sent malformed data', 'malformed', 'non-object game response'); return; }
   if (!versionResolved && validVersion(j.assetVersion)) setCdnVersion(j.assetVersion);
   const status = typeof j.status === 'string' ? j.status : (j.inGame ? 'live' : 'no_game');
+  gameStatus = status;
   if (status === 'live' && j.inGame) {
-    panelOk('game');
+    markPanel('game', 'ok', '');
     if (j.sessionId != null && j.sessionId !== currentSession) {
       currentSession = j.sessionId;
       document.getElementById('deathWrap').style.display = 'none';
@@ -800,14 +1072,20 @@ function handleGame(j){
     }
     const t = num(j.time);
     if (t != null) anchor = { t: t, at: performance.now() };
-    const fetched = num(j.fetchedAt);
-    const transitMs = fetched != null ? Math.max(0, Math.min(60000, (Date.now() / 1000 - fetched) * 1000)) : 0;
-    lastGoodAt = performance.now() - transitMs;
+    const snapAge = num(j.snapshotAgeSec);
+    if (snapAge != null) {
+      lastGoodAt = performance.now() - Math.min(600000, Math.max(0, snapAge * 1000));
+    } else {
+      const fetched = num(j.fetchedAt);
+      const transitMs = fetched != null ? Math.max(0, Math.min(60000, (Date.now() / 1000 - fetched) * 1000)) : 0;
+      lastGoodAt = performance.now() - transitMs;
+    }
     render(j);
+    applyStaleUI();
     return;
   }
   if (status === 'no_game') {
-    panelOk('game');
+    markPanel('game', 'no_game', typeof j.reason === 'string' ? j.reason : '');
     const why = typeof j.reason === 'string' && j.reason ? ' (' + j.reason.replace(/_/g, ' ') + ')' : '';
     renderIdle('no_game', 'Not in a game yet' + why + ' — queue up and this board comes alive.');
     setStatus('wait', 'not in a game');
@@ -815,10 +1093,10 @@ function handleGame(j){
   }
   if (status === 'api_error') {
     const why = typeof j.reason === 'string' ? j.reason : (typeof j.error === 'string' ? j.error : 'unknown');
-    gameTrouble('Live Client API: ' + why, 'live client api error: ' + why);
+    gameTrouble('Live Client API: ' + why, 'api_error', why);
     return;
   }
-  gameTrouble('Unexpected game response from UI server');
+  gameTrouble('Unexpected game response from UI server', 'malformed', 'unknown status: ' + status);
 }
 
 async function pollGame(){
@@ -828,10 +1106,13 @@ async function pollGame(){
   try {
     const r = await fetchJson('/api/game', 8000);
     if (seq !== gameSeq) return;
-    if (r.badJson || r.json == null) { gameTrouble('UI server sent malformed data'); return; }
+    if (r.badJson || r.json == null) { gameTrouble('UI server sent malformed data', 'malformed', 'unreadable JSON'); return; }
     handleGame(r.json);
   } catch (e) {
-    if (seq === gameSeq) gameTrouble(state.inGame ? 'UI server offline — showing stale board' : 'UI server offline');
+    if (seq === gameSeq) {
+      serverReachable = false;
+      gameTrouble(state.inGame ? 'UI server offline — showing stale board' : 'UI server offline', 'offline', 'fetch failed');
+    }
   } finally { gameBusy = false; }
 }
 function renderCoach(j){
@@ -914,47 +1195,49 @@ function updateDeathRing(){
   if (age > 60) { wrap.style.display = 'none'; deathAnchor = null; }
 }
 
-function markCoachAge(t){ const el = document.getElementById('coachAge'); if (el) el.textContent = t; }
-function markDeathAge(t){
-  const wrap = document.getElementById('deathWrap');
-  const el = document.getElementById('deathAge');
-  if (el && wrap && wrap.style.display !== 'none') el.textContent = t;
-}
-
 async function pollCoach(){
   try {
     const r = await fetchJson('/api/coach', 8000);
     const j = r.json;
-    if (!isObj(j)) { panelFail('coach', 'malformed response'); markCoachAge('unavailable'); return; }
+    if (!isObj(j)) { markPanel('coach', 'malformed', 'non-object response'); setPanelAge('coachAge', 'unavailable', 'err'); return; }
+    const st = typeof j.status === 'string' ? j.status : 'ok';
+    const age = num(j.age);
+    if (st === 'ok' || st === 'missing') setSourceAge('coach', st === 'ok' ? age : null);
     renderCoach(j);
-    if (j.status === 'error') { panelFail('coach', 'file read error'); markCoachAge('read error'); }
-    else if (j.status === 'unstable') { panelFail('coach', 'unstable file read — retrying'); markCoachAge('unstable read'); }
-    else { panelOk('coach'); }
-  } catch (e) { panelFail('coach', 'UI server offline'); markCoachAge('server offline'); }
+    if (st === 'error') { markPanel('coach', 'error', 'file read error'); setPanelAge('coachAge', 'read error', 'err'); }
+    else if (st === 'unstable') { markPanel('coach', 'unstable', 'unstable file read'); setPanelAge('coachAge', 'unstable read', 'warn'); }
+    else if (st === 'missing') { markPanel('coach', 'missing', 'no output yet'); setPanelAge('coachAge', 'no output yet', ''); }
+    else { markPanel('coach', 'ok', ''); setPanelAge('coachAge', age != null ? relAge(age) + ' old' : 'source ok', age != null && age > 90 ? 'warn' : 'ok'); }
+  } catch (e) { serverReachable = false; markPanel('coach', 'offline', 'UI server unreachable'); setPanelAge('coachAge', 'server offline', 'err'); }
 }
 
 async function pollDeath(){
   try {
     const r = await fetchJson('/api/death', 8000);
     const j = r.json;
-    if (!isObj(j)) { panelFail('death', 'malformed response'); markDeathAge('unavailable'); return; }
+    if (!isObj(j)) { markPanel('death', 'malformed', 'non-object response'); setPanelAge('deathAge', 'unavailable', 'err'); return; }
+    const st = typeof j.status === 'string' ? j.status : 'ok';
+    const age = num(j.age);
     renderDeath(j);
-    if (j.status === 'error') { panelFail('death', 'file read error'); markDeathAge('read error'); }
-    else if (j.status === 'unstable') { panelFail('death', 'unstable file read — retrying'); markDeathAge('unstable read'); }
-    else { panelOk('death'); }
-  } catch (e) { panelFail('death', 'UI server offline'); markDeathAge('server offline'); }
+    if (st === 'error') { markPanel('death', 'error', 'file read error'); setPanelAge('deathAge', 'read error', 'err'); }
+    else if (st === 'unstable') { markPanel('death', 'unstable', 'unstable file read'); setPanelAge('deathAge', 'unstable read', 'warn'); }
+    else if (st === 'missing') { markPanel('death', 'missing', 'no output yet'); setPanelAge('deathAge', 'no output yet', ''); }
+    else { markPanel('death', 'ok', ''); if (age != null && age > 90) setPanelAge('deathAge', relAge(age) + ' old', 'warn'); }
+  } catch (e) { serverReachable = false; markPanel('death', 'offline', 'UI server unreachable'); setPanelAge('deathAge', 'server offline', 'err'); }
 }
 
 async function pollPlan(){
   try {
     const r = await fetchJson('/api/plan', 8000);
     const j = r.json;
-    if (!isObj(j)) { panelFail('plan', 'malformed response'); showPlanError('plan unavailable'); return; }
+    if (!isObj(j)) { markPanel('plan', 'malformed', 'non-object response'); showPlanError('plan unavailable'); setPlanStat('plan: malformed', 'err'); return; }
     if (!versionResolved && validVersion(j.assetVersion)) setCdnVersion(j.assetVersion);
-    if (j.status === 'read_error') { panelFail('plan', 'plan file read error'); showPlanError('plan read error'); return; }
-    panelOk('plan');
+    if (j.status === 'read_error') { markPanel('plan', 'read_error', 'plan file read error'); showPlanError('plan read error'); setPlanStat('plan: read error', 'err'); return; }
+    markPanel('plan', 'ok', '');
+    setSourceAge('plan', 0);
     renderPlan(j.items);
-  } catch (e) { panelFail('plan', 'UI server offline'); showPlanError('plan unavailable'); }
+    setPlanStat('plan: ok · checked <1s', 'ok');
+  } catch (e) { serverReachable = false; markPanel('plan', 'offline', 'UI server unreachable'); showPlanError('plan unavailable'); setPlanStat('plan: offline', 'err'); }
 }
 
 async function pollHighlight(){
@@ -972,15 +1255,19 @@ async function pollCost(){
   try {
     const r = await fetchJson('/api/cost', 8000);
     const j = r.json;
-    if (!isObj(j)) { panelFail('cost', 'malformed response'); setCost('$—', 'cost unavailable'); return; }
+    if (!isObj(j)) { markPanel('cost', 'malformed', 'non-object response'); setCost('$—', 'cost unavailable'); setPanelAge('costAge', 'malformed', 'err'); return; }
     if (!j.ok) {
       const st = typeof j.status === 'string' ? j.status : 'no_game';
-      if (st === 'no_game') { panelOk('cost'); setCost('$—', 'no game'); return; }
-      panelFail('cost', st + (typeof j.error === 'string' && j.error ? ': ' + j.error : ''));
+      if (st === 'no_game') { markPanel('cost', 'no_game', ''); setSourceAge('cost', null); setCost('$—', 'no game'); setPanelAge('costAge', 'idle', ''); return; }
+      const err = typeof j.error === 'string' && j.error ? ': ' + j.error : '';
+      markPanel('cost', st, err.replace(/^: /, ''));
+      setSourceAge('cost', null);
       setCost('$—', 'cost unavailable (' + st + ')');
+      setPanelAge('costAge', st, 'err');
       return;
     }
-    panelOk('cost');
+    markPanel('cost', 'ok', '');
+    setSourceAge('cost', 0);
     const cost = num(j.cost), last = num(j.lastTick), ticks = num(j.ticks);
     const total = cost != null ? '$' + cost.toFixed(4) : '$—';
     const bits = [];
@@ -988,33 +1275,58 @@ async function pollCost(){
     if (last != null) bits.push('last $' + last.toFixed(4));
     if (j.estimate || j.exact === false) bits.push('estimate');
     setCost(total, bits.join(' · ') || '—');
-  } catch (e) { panelFail('cost', 'UI server offline'); setCost('$—', 'server offline'); }
+    setPanelAge('costAge', 'checked <1s', 'ok');
+  } catch (e) { serverReachable = false; markPanel('cost', 'offline', 'UI server unreachable'); setCost('$—', 'server offline'); setPanelAge('costAge', 'offline', 'err'); }
+}
+
+async function pollHealth(){
+  try {
+    const r = await fetchJson('/api/health', 6000);
+    if (r.status === 404 || r.badJson || !isObj(r.json)) {
+      healthAvailable = false;
+      healthData = null;
+      setSourceAge('health', null);
+      updateHealthUI(true);
+      return;
+    }
+    healthAvailable = true;
+    healthData = r.json;
+    healthAt = performance.now();
+    if (!versionResolved && validVersion(healthData.assetVersion)) { versionResolved = true; setCdnVersion(healthData.assetVersion); }
+    updateHealthUI(true);
+  } catch (e) {
+    serverReachable = false;
+    updateHealthUI(true);
+  }
 }
 
 async function pollVersion(){
   try {
     const r = await fetchJson('/api/version', 6000);
     const j = r.json;
-    if (!isObj(j)) return;
+    if (!isObj(j)) { updateHealthUI(true); return; }
     const canonical = validVersion(j.version) ? j.version : (validVersion(j.championVersion) ? j.championVersion : null);
     if (canonical) { versionResolved = true; setCdnVersion(canonical); }
     else if (!versionResolved && validVersion(j.assetVersion)) setCdnVersion(j.assetVersion);
+    updateHealthUI(true);
   } catch (e) {}
 }
 
 function tickClock(){
-  if (!state.inGame || num(state.time) == null) return;
+  if (!state.inGame || num(state.time) == null) { updateHealthUI(); return; }
   const now = performance.now();
   const age = lastGoodAt > 0 ? now - lastGoodAt : Infinity;
-  const fresh = lastGoodAt > 0 && age <= FRESH_WINDOW_MS;
+  const fresh = !hardGameFailure() && lastGoodAt > 0 && age <= FRESH_WINDOW_MS;
   const t = fresh ? anchor.t + (now - anchor.at) / 1000 : anchor.t;
   document.getElementById('clock').textContent = fresh ? fmt(t) : fmt(anchor.t);
   document.getElementById('clock').classList.toggle('stale', !fresh);
-  renderTopbar(state, t);
-  if (!fresh && !state.stale) {
+  renderTopbar(state, t, !fresh);
+  if (!fresh) {
     state.stale = true;
-    setStatus('dead', 'stale — last update ' + Math.round(age / 1000) + 's ago');
+    const conn = connectionInfo();
+    setStatus('dead', (conn.cls === 'st-dead' ? 'offline' : 'stale') + ' — last update ' + (isFinite(age) ? relAge(age / 1000) : 'unknown') + ' ago');
   }
+  updateHealthUI();
 }
 
 document.getElementById('muteBtn').addEventListener('click', async () => {
@@ -1042,7 +1354,9 @@ function scheduleLoop(fn, ms){
 
 refreshAudioState();
 pollVersion();
+pollHealth();
 scheduleLoop(pollGame, 2000);
+scheduleLoop(pollHealth, 5000);
 scheduleLoop(pollCoach, 4000);
 scheduleLoop(pollDeath, 4000);
 scheduleLoop(pollCost, 5000);

@@ -31,6 +31,16 @@ DEATH_FILE = os.path.join(ROOT, 'death_latest.txt')
 EPOCH_FILE = os.path.join(ROOT, 'game_epoch.json')
 DB_PATH = os.path.join(os.path.expanduser('~'), '.local', 'share', 'opencode', 'opencode.db')
 PORT = int(os.environ.get('RIFTSENSE_PORT', '7777'))
+STARTED_AT = time.time()
+
+_LCU_STATE = {
+    'reachable': None,
+    'status': 'unknown',
+    'error': None,
+    'checkedAt': None,
+    'lastSnapshotAt': None,
+}
+_LCU_LOCK = threading.Lock()
 
 DEFAULT_ASSET_VERSION = '16.18.1'
 VERSIONS_URL = 'https://ddragon.leagueoflegends.com/api/versions.json'
@@ -243,6 +253,90 @@ def version_info():
     }
 
 
+def db_health():
+    path = DB_PATH
+    try:
+        con = _db_connect()
+    except sqlite3.Error as ex:
+        return {'ok': False, 'status': 'db_error', 'error': str(ex), 'path': path}
+    try:
+        columns = {row[1] for row in con.execute('PRAGMA table_info(session)')}
+        if not columns:
+            return {'ok': False, 'status': 'schema_error', 'error': 'session table not found',
+                    'path': path}
+        required = {'agent', 'time_created', 'time_updated', 'cost', 'tokens_input'}
+        missing = sorted(required - columns)
+        if missing:
+            return {'ok': False, 'status': 'schema_error',
+                    'error': 'missing session columns: %s' % ','.join(missing), 'path': path}
+        return {'ok': True, 'status': 'ok', 'path': path}
+    except sqlite3.Error as ex:
+        return {'ok': False, 'status': 'db_error', 'error': str(ex), 'path': path}
+    finally:
+        con.close()
+
+
+def stored_session_id():
+    stored = _read_stored_epoch()
+    session = stored.get('session')
+    return session if isinstance(session, str) and session else None
+
+
+def lcu_health(seed=True):
+    if seed and _LCU_STATE.get('checkedAt') is None:
+        fetch_game()
+    now = time.time()
+    with _LCU_LOCK:
+        state = dict(_LCU_STATE)
+    last = _num(state.get('lastSnapshotAt'))
+    return {
+        'reachable': state.get('reachable'),
+        'status': state.get('status') or 'unknown',
+        'lastSnapshotAgeSec': round(max(0.0, now - last), 3) if last is not None else None,
+        'lastSnapshotAt': last,
+        'checkedAt': state.get('checkedAt'),
+        'error': state.get('error'),
+    }
+
+
+def build_health():
+    db = db_health()
+    lcu = lcu_health()
+    now = time.time()
+    champ_count = int(ASSETS.get('championCount') or 0)
+    item_count = int(ASSETS.get('itemCount') or 0)
+    problems = []
+    if not (champ_count and item_count):
+        problems.append('assets')
+    if not db.get('ok'):
+        problems.append('db')
+    return {
+        'ok': not problems,
+        'status': 'ok' if not problems else 'degraded',
+        'problems': problems,
+        'version': ASSETS.get('version'),
+        'assetVersion': ASSETS.get('version'),
+        'championVersion': ASSETS.get('championVersion'),
+        'itemVersion': ASSETS.get('itemVersion'),
+        'championCount': champ_count,
+        'itemCount': item_count,
+        'patchMismatch': bool(ASSETS.get('mismatch')),
+        'sessionId': stored_session_id(),
+        'uptimeSec': round(max(0.0, now - STARTED_AT), 3),
+        'startedAt': STARTED_AT,
+        'time': now,
+        'db': db,
+        'lcu': lcu,
+    }
+
+
+def file_age(path):
+    try:
+        return max(0.0, time.time() - os.stat(path).st_mtime)
+    except OSError:
+        return None
+
+
 def chain_of(iid):
     seen = set()
     stack = [iid]
@@ -262,32 +356,54 @@ def find_item_id(name):
     return (ITEM_NAMES.get(name.strip().lower()) or [None])[0]
 
 
+def _record_lcu(status, reachable, error=None, snapshot=False):
+    now = time.time()
+    with _LCU_LOCK:
+        _LCU_STATE['status'] = status
+        _LCU_STATE['reachable'] = reachable
+        _LCU_STATE['error'] = error
+        _LCU_STATE['checkedAt'] = now
+        if snapshot:
+            _LCU_STATE['lastSnapshotAt'] = now
+
+
 def fetch_game():
     try:
         req = urllib.request.Request('https://127.0.0.1:2999/liveclientdata/allgamedata')
         with urllib.request.urlopen(req, context=SSL_CTX, timeout=3) as r:
             raw = r.read()
         try:
-            return json.loads(raw.decode('utf-8')), None
+            data = json.loads(raw.decode('utf-8'))
         except Exception:
+            _record_lcu('malformed_response', True, 'malformed_response')
             return None, 'malformed_response'
+        _record_lcu('live', True, None, snapshot=True)
+        return data, None
     except urllib.error.HTTPError as ex:
         if ex.code == 404:
+            _record_lcu('no_game', True, None)
             return None, 'no_active_game'
-        return None, 'http_%s' % ex.code
+        status = 'http_%s' % ex.code
+        _record_lcu(status, True, status)
+        return None, status
     except urllib.error.URLError as ex:
         reason = getattr(ex, 'reason', None)
         if isinstance(reason, (ConnectionRefusedError, ConnectionResetError)):
-            return None, 'client_unreachable'
-        if isinstance(reason, TimeoutError):
-            return None, 'timeout'
-        text = str(reason or ex).lower()
-        if 'refused' in text or 'unreachable' in text:
-            return None, 'client_unreachable'
-        if 'timed out' in text or 'timeout' in text:
-            return None, 'timeout'
-        return None, 'unreachable'
-    except Exception:
+            status = 'client_unreachable'
+        elif isinstance(reason, TimeoutError):
+            status = 'timeout'
+        else:
+            text = str(reason or ex).lower()
+            if 'refused' in text or 'unreachable' in text:
+                status = 'client_unreachable'
+            elif 'timed out' in text or 'timeout' in text:
+                status = 'timeout'
+            else:
+                status = 'unreachable'
+        _record_lcu(status, False, status)
+        return None, status
+    except Exception as ex:
+        _record_lcu('error', False, type(ex).__name__)
         return None, 'error'
 
 
@@ -421,6 +537,7 @@ def build_state():
             'enemyTeam': [],
             'identity': {'status': 'unknown', 'method': None, 'candidates': []},
             'fetchedAt': fetched_at,
+            'snapshotAgeSec': None,
             'assetVersion': ASSETS.get('version'),
         }
         if status == 'api_error':
@@ -492,6 +609,7 @@ def build_state():
         'sessionId': ctx.get('session'),
         'identity': identity,
         'fetchedAt': fetched_at,
+        'snapshotAgeSec': round(max(0.0, time.time() - fetched_at), 3),
         'assetVersion': ASSETS.get('version'),
         'myTeam': my_team,
         'enemyTeam': enemy_team,
@@ -650,7 +768,7 @@ def build_plan():
             lines = f.read().splitlines()
     except OSError as ex:
         return {'items': [], 'champ': None, 'status': 'read_error', 'error': str(ex),
-                'assetVersion': ASSETS.get('version')}
+                'fetchedAt': time.time(), 'age': None, 'assetVersion': ASSETS.get('version')}
     ctx = game_context()
     champ = ctx.get('champ')
     plan_line = None
@@ -690,6 +808,8 @@ def build_plan():
         'status': 'ok',
         'gameSource': ctx.get('source'),
         'sessionId': ctx.get('session'),
+        'fetchedAt': time.time(),
+        'age': file_age(BUILD_FILE),
         'assetVersion': ASSETS.get('version'),
     }
 
@@ -845,6 +965,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_error(500, str(ex))
         elif path == '/api/version':
             self._send(version_info())
+        elif path == '/api/health':
+            self._send(build_health())
         elif path == '/api/game':
             state = build_state()
             self._send(state, code=503 if state.get('status') == 'api_error' else 200)
