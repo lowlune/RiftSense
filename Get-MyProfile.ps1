@@ -6,7 +6,7 @@ if (-not $lock) { Write-Output 'League client is not running (lockfile not found
 $champs = Get-ChampMap
 $me = $null
 try { $me = Invoke-LcuApi -Lock $lock -ApiPath '/lol-summoner/v1/current-summoner' } catch { }
-if (-not $me) { Write-Output 'Could not read summoner info from the client.'; exit 0 }
+if (-not $me) { Write-Output 'Could not read summoner info from the client.'; exit 1 }
 
 $name = $me.displayName
 if ($me.gameName) { $name = "$($me.gameName)#$($me.tagLine)" }
@@ -44,8 +44,16 @@ foreach ($ep in @("/lol-match-history/v1/products/lol/$myPuuid/matches?begIndex=
 if ($games) {
     Write-Output ("RECENT GAMES (last {0}):" -f $games.Count)
     foreach ($g in $games) {
-        $dur = $g.gameDuration
-        if ($dur -gt 100000) { $dur = [int]($dur / 1000) }
+        $dur = $null
+        if ($null -ne $g.gameDuration) {
+            try { $dur = [double]$g.gameDuration } catch { $dur = $null }
+        }
+        if ($null -ne $dur) {
+            if ($dur -gt 100000) { $dur = $dur / 1000.0 }
+            if ($dur -lt 0) { $dur = $null }
+        }
+        $durMin = '?'
+        if ($null -ne $dur) { $durMin = [int][math]::Floor($dur / 60.0) }
         $myPartId = $null
         if ($g.participantIdentities) {
             foreach ($ident in $g.participantIdentities) {
@@ -70,8 +78,16 @@ if ($games) {
         }
         $win = '?'
         if ($stats) { if ($stats.win) { $win = 'W' } else { $win = 'L' } }
-        $when = [datetimeoffset]::FromUnixTimeMilliseconds([long]$g.gameCreation).LocalDateTime.ToString('MM-dd HH:mm')
-        Write-Output ("  {0} {1} {2} {3}/{4}/{5} CS{6} {7} {8}m" -f $when, (Get-ChampName $champs $champId), $win, $stats.kills, $stats.deaths, $stats.assists, $stats.totalMinionsKilled, (Get-QueueName $g.queueId), [int]($dur / 60))
+        $when = '?'
+        if ($null -ne $g.gameCreation) {
+            try {
+                $ms = [long]$g.gameCreation
+                if ($ms -gt 0) { $when = [datetimeoffset]::FromUnixTimeMilliseconds($ms).LocalDateTime.ToString('MM-dd HH:mm') }
+            } catch { $when = '?' }
+        }
+        $cs = '?'
+        if ($null -ne $stats.totalMinionsKilled) { try { $cs = [int]$stats.totalMinionsKilled } catch { $cs = '?' } }
+        Write-Output ("  {0} {1} {2} {3}/{4}/{5} CS{6} {7} {8}m" -f $when, (Get-ChampName $champs $champId), $win, $stats.kills, $stats.deaths, $stats.assists, $cs, (Get-QueueName $g.queueId), $durMin)
     }
 } else {
     Write-Output 'Match history unavailable.'

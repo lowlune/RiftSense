@@ -6,6 +6,10 @@ param(
     [int]$DeathTimeoutSeconds = 90,
     [int]$MaxInferencesPerGame = 40,
     [int]$MinSecondsBetweenInferences = 15,
+    [int]$MaxSourceAgeSeconds = 90,
+    [int]$NoGameEndSeconds = 300,
+    [int]$MaxCommandLineChars = 28000,
+    [int]$MaxGameStartAttempts = 50,
     [string]$TimelineUrl = 'http://127.0.0.1:7777/api/events'
 )
 
@@ -16,6 +20,10 @@ if ($TickTimeoutSeconds -lt 5) { $TickTimeoutSeconds = 180 }
 if ($DeathTimeoutSeconds -lt 5) { $DeathTimeoutSeconds = 90 }
 if ($MaxInferencesPerGame -lt 1) { $MaxInferencesPerGame = 40 }
 if ($MinSecondsBetweenInferences -lt 0) { $MinSecondsBetweenInferences = 15 }
+if ($MaxSourceAgeSeconds -lt 10) { $MaxSourceAgeSeconds = 90 }
+if ($NoGameEndSeconds -lt 30) { $NoGameEndSeconds = 300 }
+if ($MaxCommandLineChars -lt 2000) { $MaxCommandLineChars = 28000 }
+if ($MaxGameStartAttempts -lt 1) { $MaxGameStartAttempts = 50 }
 
 $ErrorActionPreference = 'Continue'
 $script:dir = $PSScriptRoot
@@ -30,6 +38,11 @@ $script:coachFile = Join-Path $script:dir 'coach_latest.txt'
 $script:coachMeta = Join-Path $script:dir 'coach_latest.json'
 $script:deathFile = Join-Path $script:dir 'death_latest.txt'
 $script:deathMeta = Join-Path $script:dir 'death_latest.json'
+$script:apiBase = ($TimelineUrl -replace '/api/events/?$', '')
+if ($script:apiBase -match '^(https?://[^/]+)') { $script:apiBase = $matches[1] }
+if (-not $script:apiBase) { $script:apiBase = 'http://127.0.0.1:7777' }
+$script:gameUrl = $script:apiBase + '/api/game'
+$script:clock = [System.Diagnostics.Stopwatch]::StartNew()
 
 $ownsMutex = $false
 $script:InstanceMutex = $null
@@ -47,12 +60,12 @@ if (-not $ownsMutex) {
 }
 
 $ocExe = (Get-Command opencode -ErrorAction SilentlyContinue).Source
-if (-not $ocExe) { Write-Host 'opencode is not on PATH. Aborting.' -ForegroundColor Red; exit 1 }
 
 . (Join-Path $script:dir 'common.ps1')
 
 $script:sessionActive = $false
 $script:sessionId = ''
+$script:sessionIdSource = 'generated'
 $script:sessionChamp = ''
 $script:sessionPlayer = ''
 $script:sessionMode = ''
@@ -62,7 +75,7 @@ $script:processedDeathKeys = @{}
 $script:lastDeathT = -1.0
 $script:seq = 0
 $script:activeDeath = $null
-$script:deathRetryAt = [datetime]::MinValue
+$script:deathRetryAtSec = 0.0
 $script:deathState = 'idle'
 $script:tickProc = $null
 $script:tickWatch = $null
@@ -70,13 +83,23 @@ $script:tickSnapshot = $null
 $script:deathProc = $null
 $script:deathWatch = $null
 $script:tickFails = 0
-$script:nextTickAt = [datetime]::MinValue
+$script:nextTickAtSec = 0.0
 $script:coachSessionId = ''
 $script:apiFails = 0
+$script:apiDownSinceSec = -1.0
+$script:disconnected = $false
+$script:coverageOpen = $false
+$script:coverageStartSec = 0.0
+$script:lastGoodPollAtSec = $null
+$script:gameStartAcked = $false
+$script:gameStartAttempts = 0
+$script:gameStartNextTrySec = 0.0
+$script:nextSessionProbeSec = 0.0
 $script:ts = ''
 $script:myName = ''
 $script:myGameName = ''
 $script:myTagLine = ''
+$script:myPosition = ''
 $script:snapHistory = New-Object 'System.Collections.Generic.List[object]'
 $script:eventHistory = New-Object 'System.Collections.Generic.List[object]'
 $script:eventKeys = @{}
@@ -85,13 +108,17 @@ $script:EventHistoryLimit = 24
 $script:PreDeathWindowSeconds = 90
 $script:PreDeathEventLimit = 6
 $script:inferencesThisGame = 0
-$script:lastInferenceAt = [datetime]::MinValue
+$script:lastInferenceAtSec = -100000.0
 $script:tickRequestId = ''
 $script:deathRequestId = ''
 $script:lastItemSignature = ''
 $script:lastObjectiveKey = ''
 $script:forceTick = $false
 $script:budgetExhausted = $false
+
+function Get-ElapsedSeconds {
+    return $script:clock.Elapsed.TotalSeconds
+}
 
 function Stop-ProcessTree {
     param($Process)
@@ -135,30 +162,82 @@ function Read-FileText {
     } catch { return '' }
 }
 
-function Publish-Envelope {
+function Publish-Record {
     param(
-        [string]$Path,
+        [string]$JsonPath,
+        [string]$TextPath,
         [string]$Kind,
         [string]$Status,
         [string]$Text,
         [string]$ErrorText,
         $ObservedGameTime,
         $Seq,
-        $Extra
+        $Extra,
+        $SourceAgeSec
     )
+    $age = $SourceAgeSec
+    if ($null -eq $age) {
+        if ($null -ne $script:lastGoodPollAtSec) {
+            $age = [math]::Round([math]::Max(0.0, (Get-ElapsedSeconds) - $script:lastGoodPollAtSec), 3)
+        }
+    }
     $obj = [ordered]@{
         schema = 'riftsense.v1'
         kind = $Kind
         session = $script:sessionId
+        sessionId = $script:sessionId
+        sessionSource = $script:sessionIdSource
         seq = $Seq
         observedGameTime = $ObservedGameTime
         completedAt = (Get-Date).ToUniversalTime().ToString('o')
         status = $Status
         error = $ErrorText
+        sourceAgeSec = $age
         text = $Text
     }
     if ($Extra) { foreach ($k in $Extra.Keys) { $obj[$k] = $Extra[$k] } }
-    Publish-Text -Path $Path -Text ($obj | ConvertTo-Json -Compress -Depth 5)
+    Publish-Text -Path $JsonPath -Text ($obj | ConvertTo-Json -Compress -Depth 6)
+    if ($TextPath) { Publish-Text -Path $TextPath -Text $Text }
+}
+
+function Post-TimelineBody {
+    param([hashtable]$Body)
+    try {
+        $json = $Body | ConvertTo-Json -Depth 6 -Compress
+        $res = Invoke-RestMethod -Uri $TimelineUrl -Method Post -ContentType 'application/json' -Body $json -TimeoutSec 3 -ErrorAction Stop
+        if ($res -and ($res.PSObject.Properties.Name -contains 'ok') -and (-not $res.ok)) { return $false }
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+function Send-GameStart {
+    if (-not $script:sessionActive) { return $false }
+    if ($script:gameStartAcked) { return $true }
+    if ($script:gameStartAttempts -ge $MaxGameStartAttempts) { return $false }
+    $nowSec = Get-ElapsedSeconds
+    if ($nowSec -lt $script:gameStartNextTrySec) { return $false }
+    $script:gameStartAttempts++
+    $body = @{
+        kind = 'game_start'
+        label = ("{0} {1}" -f $script:sessionChamp, $script:sessionMode)
+        sessionId = $script:sessionId
+        champ = $script:sessionChamp
+        mode = $script:sessionMode
+        gameTime = $script:lastGameTime
+        data = @{ champ = $script:sessionChamp; mode = $script:sessionMode; source = $script:sessionIdSource }
+    }
+    if ($script:sessionMap) { try { $body.map = [int]$script:sessionMap } catch { } }
+    if (Post-TimelineBody -Body $body) {
+        $script:gameStartAcked = $true
+        $script:gameStartAttempts = 0
+        $script:gameStartNextTrySec = 0.0
+        return $true
+    }
+    $wait = [math]::Min(30.0, [math]::Pow(2.0, [math]::Min(6, $script:gameStartAttempts)))
+    $script:gameStartNextTrySec = $nowSec + $wait
+    return $false
 }
 
 function Send-TimelineEvent {
@@ -168,26 +247,67 @@ function Send-TimelineEvent {
         [hashtable]$Data = $null,
         [string]$RequestId = '',
         [string]$Status = '',
-        [double]$GameTime = -1
+        [double]$GameTime = -1,
+        [string]$Text = '',
+        [string]$AdviceKind = '',
+        $TokensIn = $null,
+        $TokensOut = $null,
+        $Cost = $null
     )
+    if ($script:sessionActive -and (-not $script:gameStartAcked) -and ($Kind -ne 'game_start')) {
+        $null = Send-GameStart
+    }
+    $gt = $script:lastGameTime
+    if ($GameTime -ge 0) { $gt = $GameTime }
+    $body = @{
+        kind = $Kind
+        label = $Label
+        sessionId = $script:sessionId
+        champ = $script:sessionChamp
+        mode = $script:sessionMode
+        gameTime = $gt
+    }
+    if ($script:sessionMap) { try { $body.map = [int]$script:sessionMap } catch { } }
+    if ($Data) { $body.data = $Data }
+    if ($RequestId) { $body.requestId = $RequestId }
+    if ($Status) { $body.status = $Status }
+    if ($Text) { $body.text = $Text }
+    if ($AdviceKind) {
+        $body.adviceKind = $AdviceKind
+        if ($Data) { $body.meta = $Data }
+    }
+    if ($null -ne $TokensIn) { $body.tokensIn = $TokensIn }
+    if ($null -ne $TokensOut) { $body.tokensOut = $TokensOut }
+    if ($null -ne $Cost) { $body.cost = $Cost }
+    return (Post-TimelineBody -Body $body)
+}
+
+function Send-Coverage {
+    param([string]$Action, [string]$Reason = '')
+    if ($Action -eq 'start') {
+        if ($script:coverageOpen) { return }
+        $script:coverageOpen = $true
+        $script:coverageStartSec = Get-ElapsedSeconds
+        $null = Send-TimelineEvent -Kind 'coverage' -Label ("coverage_start gameTime={0} reason={1}" -f ([int]$script:lastGameTime), $Reason) -Data @{ action = 'start'; reason = $Reason; gameTime = [double]$script:lastGameTime }
+    } else {
+        if (-not $script:coverageOpen) { return }
+        $script:coverageOpen = $false
+        $secs = [int][math]::Max(0.0, (Get-ElapsedSeconds) - $script:coverageStartSec)
+        $null = Send-TimelineEvent -Kind 'coverage' -Label ("coverage_stop gameTime={0} seconds={1} reason={2}" -f ([int]$script:lastGameTime), $secs, $Reason) -Data @{ action = 'stop'; reason = $Reason; gameTime = [double]$script:lastGameTime; seconds = $secs }
+    }
+}
+
+function Get-ServerSessionId {
     try {
-        $gt = $script:lastGameTime
-        if ($GameTime -ge 0) { $gt = $GameTime }
-        $body = @{
-            kind = $Kind
-            label = $Label
-            sessionId = $script:sessionId
-            champ = $script:sessionChamp
-            mode = $script:sessionMode
-            gameTime = $gt
+        $res = Invoke-RestMethod -Uri $script:gameUrl -Method Get -TimeoutSec 3 -ErrorAction Stop
+        if (-not $res) { return '' }
+        if (($res.PSObject.Properties.Name -contains 'inGame') -and (-not $res.inGame)) { return '' }
+        if ($res.PSObject.Properties.Name -contains 'sessionId') {
+            $sid = "$($res.sessionId)"
+            if ($sid) { return $sid }
         }
-        if ($script:sessionMap) { try { $body.map = [int]$script:sessionMap } catch { } }
-        if ($Data) { $body.data = $Data }
-        if ($RequestId) { $body.requestId = $RequestId }
-        if ($Status) { $body.status = $Status }
-        $json = $body | ConvertTo-Json -Depth 4 -Compress
-        $null = Invoke-RestMethod -Uri $TimelineUrl -Method Post -ContentType 'application/json' -Body $json -TimeoutSec 3 -ErrorAction Stop
     } catch { }
+    return ''
 }
 
 function Get-InferenceBudget {
@@ -202,62 +322,111 @@ function Request-InferenceSlot {
         if (-not $script:budgetExhausted) {
             $script:budgetExhausted = $true
             Write-Host "[$script:ts] Inference budget exhausted ($MaxInferencesPerGame this game) - coaching paused, detection continues." -ForegroundColor Yellow
-            Send-TimelineEvent -Kind 'status' -Label ("budget exhausted ({0}/{1})" -f $budget.Used, $budget.Limit) -Data @{ used = $budget.Used; limit = $budget.Limit }
+            $null = Send-TimelineEvent -Kind 'status' -Label ("budget exhausted ({0}/{1})" -f $budget.Used, $budget.Limit) -Data @{ used = $budget.Used; limit = $budget.Limit }
         }
         return $null
     }
     if (-not $IgnoreCooldown) {
-        if (([datetime]::Now - $script:lastInferenceAt).TotalSeconds -lt $MinSecondsBetweenInferences) { return $null }
+        if (((Get-ElapsedSeconds) - $script:lastInferenceAtSec) -lt $MinSecondsBetweenInferences) { return $null }
     }
     $script:inferencesThisGame++
-    $script:lastInferenceAt = [datetime]::Now
+    $script:lastInferenceAtSec = Get-ElapsedSeconds
     $rid = [guid]::NewGuid().ToString('N')
-    Send-TimelineEvent -Kind 'inference' -RequestId $rid -Status 'started' -Label $Kind
+    $null = Send-TimelineEvent -Kind 'inference' -RequestId $rid -Status 'started' -Label $Kind
     return $rid
 }
 
 function Complete-Inference {
-    param([string]$RequestId, [string]$Status, [hashtable]$Data = $null)
+    param([string]$RequestId, [string]$Status, [hashtable]$Data = $null, $TokensIn = $null, $TokensOut = $null, $Cost = $null)
     if (-not $RequestId) { return }
-    Send-TimelineEvent -Kind 'inference' -RequestId $RequestId -Status $Status -Data $Data
+    $null = Send-TimelineEvent -Kind 'inference' -RequestId $RequestId -Status $Status -Data $Data -TokensIn $TokensIn -TokensOut $TokensOut -Cost $Cost
 }
 
-function Get-NextObjective {
-    param($Data, [double]$GameTime)
-    $dragonCount = 0
+function Get-DragonObjectiveState {
+    param($Data)
+    $teamByName = @{}
+    if ($Data.allPlayers) {
+        foreach ($p in $Data.allPlayers) {
+            foreach ($n in @((Get-PlayerLabel $p), "$($p.riotIdGameName)", "$($p.summonerName)")) {
+                $n = "$n"
+                if ($n) {
+                    $key = $n.ToLowerInvariant()
+                    if (-not $teamByName.ContainsKey($key)) { $teamByName[$key] = "$($p.team)" }
+                }
+            }
+        }
+    }
+    $orderElems = 0
+    $chaosElems = 0
+    $unknownElems = 0
     $lastDragon = -1.0
+    $lastDragonType = ''
     $lastBaron = -1.0
     if ($Data.events -and $Data.events.Events) {
         foreach ($e in $Data.events.Events) {
             $n = "$($e.EventName)"
+            $t = [double]$e.EventTime
             if ($n -eq 'DragonKill') {
-                $dragonCount++
-                $t = [double]$e.EventTime
-                if ($t -gt $lastDragon) { $lastDragon = $t }
+                $dt = "$($e.DragonType)"
+                if ($dt -ne 'Elder') {
+                    $k = "$($e.KillerName)".ToLowerInvariant()
+                    $kt = ''
+                    if ($teamByName.ContainsKey($k)) { $kt = $teamByName[$k] }
+                    if ($kt -eq 'ORDER') { $orderElems++ }
+                    elseif ($kt -eq 'CHAOS') { $chaosElems++ }
+                    else { $unknownElems++ }
+                }
+                if ($t -gt $lastDragon) { $lastDragon = $t; $lastDragonType = $dt }
             } elseif ($n -eq 'BaronKill') {
-                $t = [double]$e.EventTime
                 if ($t -gt $lastBaron) { $lastBaron = $t }
             }
         }
     }
-    $dragonSpawn = 300.0
+    $soulTeam = ''
+    if ($orderElems -ge 4) { $soulTeam = 'ORDER' }
+    elseif ($chaosElems -ge 4) { $soulTeam = 'CHAOS' }
+    $soulState = 'none'
+    if ($soulTeam) {
+        $soulState = $soulTeam
+    } elseif ($unknownElems -gt 0) {
+        if ((($orderElems + $unknownElems) -ge 4) -or (($chaosElems + $unknownElems) -ge 4)) { $soulState = 'unknown' }
+    }
+    $spawn = 300.0
+    $kind = 'dragon'
     if ($lastDragon -ge 0) {
-        $gap = 300.0
-        if ($dragonCount -ge 4) { $gap = 360.0 }
-        $dragonSpawn = $lastDragon + $gap
+        if (($lastDragonType -eq 'Elder') -or $soulTeam) {
+            $spawn = $lastDragon + 360.0
+            $kind = 'elder'
+        } else {
+            $spawn = $lastDragon + 300.0
+        }
     }
     $baronSpawn = 1200.0
     if ($lastBaron -ge 0) { $baronSpawn = $lastBaron + 360.0 }
+    return [pscustomobject]@{
+        DragonSpawn = $spawn
+        DragonKind = $kind
+        Soul = $soulState
+        OrderElems = $orderElems
+        ChaosElems = $chaosElems
+        UnknownElems = $unknownElems
+        BaronSpawn = $baronSpawn
+    }
+}
+
+function Get-NextObjective {
+    param($Data, [double]$GameTime)
+    $ds = Get-DragonObjectiveState -Data $Data
     $best = $null
     $candidates = @(
-        @{ Key = ("dragon:{0}" -f [int]$dragonSpawn); Label = 'dragon up soon'; Spawn = $dragonSpawn },
-        @{ Key = ("baron:{0}" -f [int]$baronSpawn); Label = 'baron up soon'; Spawn = $baronSpawn }
+        @{ Key = ("dragon:{0}:{1}" -f $ds.DragonKind, [int]$ds.DragonSpawn); Label = 'dragon up soon'; Spawn = $ds.DragonSpawn; Kind = $ds.DragonKind; Soul = $ds.Soul },
+        @{ Key = ("baron:{0}" -f [int]$ds.BaronSpawn); Label = 'baron up soon'; Spawn = $ds.BaronSpawn; Kind = 'baron'; Soul = $ds.Soul }
     )
     foreach ($c in $candidates) {
         $left = [double]$c.Spawn - $GameTime
         if (($left -ge -30) -and ($left -le 30)) {
             if (($null -eq $best) -or ($left -lt $best.SecondsLeft)) {
-                $best = [pscustomobject]@{ Key = $c.Key; Label = $c.Label; SecondsLeft = $left }
+                $best = [pscustomobject]@{ Key = $c.Key; Label = $c.Label; SecondsLeft = $left; Kind = $c.Kind; Soul = $c.Soul }
             }
         }
     }
@@ -543,13 +712,18 @@ function ConvertFrom-DeathReport {
 }
 
 function Stop-Workers {
+    param([string]$DeadReason = 'cancelled')
     if ($script:tickProc) {
+        Complete-Inference -RequestId $script:tickRequestId -Status $DeadReason -Data @{ reason = $DeadReason }
+        $script:tickRequestId = ''
         Stop-ProcessTree $script:tickProc
         $script:tickProc = $null
         $script:tickWatch = $null
         $script:tickSnapshot = $null
     }
     if ($script:deathProc) {
+        Complete-Inference -RequestId $script:deathRequestId -Status $DeadReason -Data @{ reason = $DeadReason }
+        $script:deathRequestId = ''
         Stop-ProcessTree $script:deathProc
         $script:deathProc = $null
         $script:deathWatch = $null
@@ -557,36 +731,49 @@ function Stop-Workers {
 }
 
 function Start-Session {
-    param($Data, [string]$Champ)
-    Stop-Workers
+    param($Data, [string]$Champ, [string]$Reason = 'new_game')
+    if ($script:sessionActive) { Close-Session -Reason $Reason }
+    Stop-Workers -DeadReason 'superseded'
     $g = $Data.gameData
     $script:sessionActive = $true
-    $script:sessionId = ('{0}|{1}|{2}|{3}' -f $g.gameMode, $g.mapNumber, $Champ, (Get-Date -Format 'yyyyMMddHHmmss'))
     $script:sessionChamp = $Champ
     $script:sessionPlayer = $script:myName
     $script:sessionMode = "$($g.gameMode)"
     $script:sessionMap = "$($g.mapNumber)"
     $script:lastGameTime = [double]$g.gameTime
+    $sid = Get-ServerSessionId
+    if ($sid) {
+        $script:sessionId = $sid
+        $script:sessionIdSource = 'server'
+    } else {
+        $script:sessionId = ('ps|{0}|{1}|{2}' -f $g.gameMode, $g.mapNumber, [guid]::NewGuid().ToString('N'))
+        $script:sessionIdSource = 'generated'
+    }
+    $script:gameStartAcked = $false
+    $script:gameStartAttempts = 0
+    $script:gameStartNextTrySec = 0.0
+    $script:nextSessionProbeSec = (Get-ElapsedSeconds) + 10
     $script:processedDeathKeys = @{}
     $script:lastDeathT = -1.0
     $script:activeDeath = $null
-    $script:deathRetryAt = [datetime]::MinValue
+    $script:deathRetryAtSec = 0.0
     $script:deathState = 'idle'
     $script:tickFails = 0
-    $script:nextTickAt = [datetime]::MinValue
+    $script:nextTickAtSec = 0.0
     $script:coachSessionId = ''
     $script:seq = 0
     $script:snapHistory = New-Object 'System.Collections.Generic.List[object]'
     $script:eventHistory = New-Object 'System.Collections.Generic.List[object]'
     $script:eventKeys = @{}
     $script:inferencesThisGame = 0
-    $script:lastInferenceAt = [datetime]::MinValue
+    $script:lastInferenceAtSec = -100000.0
     $script:tickRequestId = ''
     $script:deathRequestId = ''
     $script:lastItemSignature = ''
     $script:lastObjectiveKey = ''
     $script:forceTick = $false
     $script:budgetExhausted = $false
+    $script:lastGoodPollAtSec = Get-ElapsedSeconds
     if ($Data.events -and $Data.events.Events) {
         foreach ($e in $Data.events.Events) {
             Add-GameEvent -Event $e
@@ -598,23 +785,27 @@ function Start-Session {
             }
         }
     }
-    Publish-Text -Path $script:coachFile -Text ''
-    Publish-Envelope -Path $script:coachMeta -Kind 'coach' -Status 'starting' -Text '' -ErrorText '' -ObservedGameTime $g.gameTime -Seq 0
-    Publish-Text -Path $script:deathFile -Text ''
-    Publish-Envelope -Path $script:deathMeta -Kind 'death' -Status 'idle' -Text '' -ErrorText '' -ObservedGameTime $g.gameTime -Seq 0
-    Send-TimelineEvent -Kind 'game_start' -Label ("{0} {1}" -f $Champ, $g.gameMode) -Data @{ champ = $Champ; mode = "$($g.gameMode)"; map = [int]$g.mapNumber } -GameTime ([double]$g.gameTime)
+    Publish-Record -JsonPath $script:coachMeta -TextPath $script:coachFile -Kind 'coach' -Status 'starting' -Text '' -ErrorText '' -ObservedGameTime $g.gameTime -Seq 0
+    Publish-Record -JsonPath $script:deathMeta -TextPath $script:deathFile -Kind 'death' -Status 'idle' -Text '' -ErrorText '' -ObservedGameTime $g.gameTime -Seq 0
+    Send-Coverage -Action 'start' -Reason $Reason
+    $null = Send-GameStart
 }
 
 function Close-Session {
-    Stop-Workers
-    Send-TimelineEvent -Kind 'game_end' -Label 'game closed'
+    param([string]$Reason = 'collector_stopped')
+    $wasActive = $script:sessionActive
+    Stop-Workers -DeadReason 'cancelled'
+    if ($wasActive) {
+        $null = Send-TimelineEvent -Kind 'game_end' -Label ("game end ({0})" -f $Reason) -Data @{ reason = $Reason; lastGameTime = [double]$script:lastGameTime } -GameTime $script:lastGameTime
+        Send-Coverage -Action 'stop' -Reason $Reason
+    }
     $script:activeDeath = $null
     $script:deathState = 'idle'
     $script:sessionActive = $false
-    Publish-Text -Path $script:coachFile -Text 'OUT OF GAME'
-    Publish-Envelope -Path $script:coachMeta -Kind 'coach' -Status 'no_game' -Text 'OUT OF GAME' -ErrorText '' -ObservedGameTime $null -Seq $script:seq
-    Publish-Text -Path $script:deathFile -Text ''
-    Publish-Envelope -Path $script:deathMeta -Kind 'death' -Status 'no_game' -Text '' -ErrorText '' -ObservedGameTime $null -Seq $script:seq
+    $script:disconnected = $false
+    $script:coverageOpen = $false
+    Publish-Record -JsonPath $script:coachMeta -TextPath $script:coachFile -Kind 'coach' -Status 'no_game' -Text 'OUT OF GAME' -ErrorText '' -ObservedGameTime $null -Seq $script:seq
+    Publish-Record -JsonPath $script:deathMeta -TextPath $script:deathFile -Kind 'death' -Status 'no_game' -Text '' -ErrorText '' -ObservedGameTime $null -Seq $script:seq
 }
 
 function New-DeathRecord {
@@ -632,14 +823,16 @@ function New-DeathRecord {
         Session = $script:sessionId
         Seq = $script:seq
         GameTime = $script:lastGameTime
+        DetectedAtSec = Get-ElapsedSeconds
+        DetectedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
     }
     $script:deathState = 'detected'
-    $script:deathRetryAt = [datetime]::MinValue
-    Send-TimelineEvent -Kind 'death' -Label ("died {0} to {1}" -f $clock, $Killer) -Data @{ clock = $clock; killer = $Killer; killedByChampion = [bool]$KilledByChampion } -GameTime $Time
+    $script:deathRetryAtSec = 0.0
+    $null = Send-TimelineEvent -Kind 'death' -Label ("died {0} to {1}" -f $clock, $Killer) -Data @{ clock = $clock; killer = $Killer; killedByChampion = [bool]$KilledByChampion; sessionSource = $script:sessionIdSource } -GameTime $Time
 }
 
 function Handle-DeathFailure {
-    param([string]$Reason)
+    param([string]$Reason, [switch]$Permanent)
     Complete-Inference -RequestId $script:deathRequestId -Status 'failed' -Data @{ reason = $Reason }
     $script:deathRequestId = ''
     $script:deathProc = $null
@@ -649,29 +842,44 @@ function Handle-DeathFailure {
     if (-not $ad) { return }
     $ad.State = 'failed'
     $failText = ("DIED: {0} to {1} - report unavailable ({2})" -f $ad.Clock, $ad.Killer, $Reason)
-    Publish-Text -Path $script:deathFile -Text $failText
-    Publish-Envelope -Path $script:deathMeta -Kind 'death' -Status 'failed' -Text $failText -ErrorText $Reason -ObservedGameTime $ad.GameTime -Seq $ad.Seq -Extra @{ clock = $ad.Clock; killer = $ad.Killer; eventTime = $ad.Time; killedByChampion = [bool]$ad.KilledByChampion }
+    Publish-Record -JsonPath $script:deathMeta -TextPath $script:deathFile -Kind 'death' -Status 'failed' -Text $failText -ErrorText $Reason -ObservedGameTime $ad.GameTime -Seq $ad.Seq -SourceAgeSec ((Get-ElapsedSeconds) - [double]$ad.DetectedAtSec) -Extra @{ eventId = $ad.Key; clock = $ad.Clock; killer = $ad.Killer; eventTime = $ad.Time; killedByChampion = [bool]$ad.KilledByChampion; role = $script:myPosition }
     Write-Host "[$script:ts] Death report failed ($Reason)." -ForegroundColor Red
-    if ([int]$ad.Attempts -ge 3) {
+    if ($Permanent -or ([int]$ad.Attempts -ge 3)) {
         $script:processedDeathKeys[$ad.Key] = $true
         $script:lastDeathT = [math]::Max([double]$script:lastDeathT, [double]$ad.Time)
         $script:activeDeath = $null
     } else {
-        $script:deathRetryAt = [datetime]::Now.AddSeconds(30)
+        $script:deathRetryAtSec = (Get-ElapsedSeconds) + 30
     }
 }
 
 function Start-DeathWorker {
     $ad = $script:activeDeath
     if (-not $ad) { return }
+    $age = (Get-ElapsedSeconds) - [double]$ad.DetectedAtSec
+    if ($age -gt $MaxSourceAgeSeconds) {
+        Handle-DeathFailure -Reason ("source snapshot too old ({0:0}s)" -f $age) -Permanent
+        return
+    }
+    $windowBlock = "PRE-DEATH WINDOW (observed snapshots and events from your own game data; use these for OBSERVED lines):`r`n" + "$($ad.Window)"
+    if (-not ("$($ad.Window)").Trim()) { $windowBlock = 'PRE-DEATH WINDOW: unavailable.' }
+    $deathPrompt = "DEATH REPORT. You just died at $($ad.Clock) to $($ad.Killer). The live game data, pre-death window, and your build intent are included below - answer directly from them.`r`n$windowBlock`r`nOutput up to 4 hidden reasoning lines first (>>), then the ===DEATH=== block exactly per your Death reports section: DIED, OBSERVED: lines (facts only, from the supplied data), HYPOTHESIS: lines (possible explanations), NOW, NEXT, DO NOW. Say insufficient evidence if the data cannot support a cause. Max 12 lines total."
+    $prep = New-CoachPrompt -BasePrompt $deathPrompt -Champ $script:sessionChamp -Role $script:myPosition
+    if (-not $prep.Ok) {
+        if ("$($prep.Error)" -like 'prompt too large*') {
+            Handle-DeathFailure -Reason $prep.Error -Permanent
+        } else {
+            Handle-DeathFailure -Reason ("live snapshot unusable: {0}" -f $prep.Error)
+        }
+        return
+    }
     $rid = Request-InferenceSlot -Kind 'death' -IgnoreCooldown
     if (-not $rid) {
         Write-Host "[$script:ts] Inference budget exhausted - death report for $($ad.Clock) unavailable." -ForegroundColor Yellow
         $script:deathState = 'failed'
         $ad.State = 'failed'
         $failText = ("DIED: {0} to {1} - report unavailable (inference budget exhausted)" -f $ad.Clock, $ad.Killer)
-        Publish-Text -Path $script:deathFile -Text $failText
-        Publish-Envelope -Path $script:deathMeta -Kind 'death' -Status 'failed' -Text $failText -ErrorText 'budget exhausted' -ObservedGameTime $ad.GameTime -Seq $ad.Seq -Extra @{ clock = $ad.Clock; killer = $ad.Killer; eventTime = $ad.Time; killedByChampion = [bool]$ad.KilledByChampion }
+        Publish-Record -JsonPath $script:deathMeta -TextPath $script:deathFile -Kind 'death' -Status 'failed' -Text $failText -ErrorText 'budget exhausted' -ObservedGameTime $ad.GameTime -Seq $ad.Seq -SourceAgeSec $age -Extra @{ eventId = $ad.Key; clock = $ad.Clock; killer = $ad.Killer; eventTime = $ad.Time; killedByChampion = [bool]$ad.KilledByChampion; role = $script:myPosition }
         $script:processedDeathKeys[$ad.Key] = $true
         $script:lastDeathT = [math]::Max([double]$script:lastDeathT, [double]$ad.Time)
         $script:activeDeath = $null
@@ -681,17 +889,15 @@ function Start-DeathWorker {
     $ad.Attempts = [int]$ad.Attempts + 1
     $ad.State = 'queued'
     $script:deathState = 'queued'
-    $script:deathRetryAt = [datetime]::MinValue
+    $script:deathRetryAtSec = 0.0
     $pending = ("PENDING|" + $ad.Clock + "|" + $ad.Killer)
-    Publish-Text -Path $script:deathFile -Text $pending
-    Publish-Envelope -Path $script:deathMeta -Kind 'death' -Status 'pending' -Text $pending -ErrorText '' -ObservedGameTime $ad.GameTime -Seq $ad.Seq -Extra @{ clock = $ad.Clock; killer = $ad.Killer; eventTime = $ad.Time; killedByChampion = [bool]$ad.KilledByChampion }
+    $pendingUntil = (Get-Date).ToUniversalTime().AddSeconds($DeathTimeoutSeconds).ToString('o')
+    Publish-Record -JsonPath $script:deathMeta -TextPath $script:deathFile -Kind 'death' -Status 'pending' -Text $pending -ErrorText '' -ObservedGameTime $ad.GameTime -Seq $ad.Seq -SourceAgeSec $age -Extra @{ requestId = $rid; eventId = $ad.Key; clock = $ad.Clock; killer = $ad.Killer; eventTime = $ad.Time; killedByChampion = [bool]$ad.KilledByChampion; pendingUntil = $pendingUntil; role = $script:myPosition }
     Write-Host "[$script:ts] Death detected at $($ad.Clock) (to $($ad.Killer)) - generating report... (attempt $($ad.Attempts))" -ForegroundColor Red
-    $windowBlock = "PRE-DEATH WINDOW (observed snapshots and events from your own game data; use these for OBSERVED lines):`r`n" + "$($ad.Window)"
-    if (-not ("$($ad.Window)").Trim()) { $windowBlock = 'PRE-DEATH WINDOW: unavailable.' }
-    $deathPrompt = "DEATH REPORT. You just died at $($ad.Clock) to $($ad.Killer). The live game data, pre-death window, and your build intent are included below - answer directly from them.`r`n$windowBlock`r`nOutput up to 4 hidden reasoning lines first (>>), then the ===DEATH=== block exactly per your Death reports section: DIED, OBSERVED: lines (facts only, from the supplied data), HYPOTHESIS: lines (possible explanations), NOW, NEXT, DO NOW. Say insufficient evidence if the data cannot support a cause. Max 12 lines total."
     $p = $null
-    try { $p = Start-CoachRun -Prompt $deathPrompt -OutFile $script:deathOut -ErrFile $script:deathErr -Champ $script:sessionChamp } catch { $p = $null }
+    try { $p = Start-CoachRun -ArgLine $prep.ArgLine -OutFile $script:deathOut -ErrFile $script:deathErr } catch { $p = $null }
     if (-not $p) {
+        $script:inferencesThisGame = [math]::Max(0, $script:inferencesThisGame - 1)
         Handle-DeathFailure -Reason 'could not start inference worker'
         return
     }
@@ -708,17 +914,16 @@ function Handle-TickFailure {
     $lastGood = Read-FileText $script:coachFile
     if (-not $lastGood.Trim()) {
         $lastGood = ("(coach tick failed: {0})" -f $Reason)
-        Publish-Text -Path $script:coachFile -Text $lastGood
     }
-    Publish-Envelope -Path $script:coachMeta -Kind 'coach' -Status 'failed' -Text $lastGood -ErrorText $Reason -ObservedGameTime $script:lastGameTime -Seq $script:seq
+    Publish-Record -JsonPath $script:coachMeta -TextPath $script:coachFile -Kind 'coach' -Status 'failed' -Text $lastGood -ErrorText $Reason -ObservedGameTime $script:lastGameTime -Seq $script:seq -Extra @{ role = $script:myPosition }
     Write-Host "[$script:ts] Coach run failed ($Reason)." -ForegroundColor Red
     $script:tickFails++
     if ($script:tickFails -le 2) {
         Write-Host "[$script:ts] Retrying immediately ($($script:tickFails)/2)." -ForegroundColor Red
-        $script:nextTickAt = [datetime]::MinValue
+        $script:nextTickAtSec = 0.0
     } else {
         Write-Host "[$script:ts] Coach run failed repeatedly - waiting 60s." -ForegroundColor Red
-        $script:nextTickAt = [datetime]::Now.AddSeconds(60)
+        $script:nextTickAtSec = (Get-ElapsedSeconds) + 60
     }
     $script:tickProc = $null
     $script:tickWatch = $null
@@ -726,22 +931,31 @@ function Handle-TickFailure {
 }
 
 function Start-TickWorker {
+    $tickPrompt = 'Live tick. The live game data and your build intent are included below - answer directly from them. Output up to 4 hidden reasoning lines first (>>), then the ===COACH=== readout exactly per your format.'
+    $prep = New-CoachPrompt -BasePrompt $tickPrompt -Champ $script:sessionChamp -Role $script:myPosition
+    if (-not $prep.Ok) {
+        Handle-TickFailure -Reason ("live snapshot unusable: {0}" -f $prep.Error)
+        if ("$($prep.Error)" -like 'prompt too large*') {
+            $script:nextTickAtSec = (Get-ElapsedSeconds) + 300
+        }
+        return
+    }
     $rid = Request-InferenceSlot -Kind 'tick'
     if (-not $rid) {
         if ((Get-InferenceBudget).Remaining -le 0) {
-            $script:nextTickAt = [datetime]::Now.AddHours(1)
+            $script:nextTickAtSec = (Get-ElapsedSeconds) + 3600
         } else {
-            $script:nextTickAt = [datetime]::Now.AddSeconds([math]::Max(5, $MinSecondsBetweenInferences))
+            $script:nextTickAtSec = (Get-ElapsedSeconds) + [math]::Max(5, $MinSecondsBetweenInferences)
         }
         return
     }
     $script:tickRequestId = $rid
-    $script:tickSnapshot = [pscustomobject]@{ Session = $script:sessionId; Seq = $script:seq; GameTime = $script:lastGameTime }
+    $script:tickSnapshot = [pscustomobject]@{ Session = $script:sessionId; Seq = $script:seq; GameTime = $script:lastGameTime; CapturedAtSec = Get-ElapsedSeconds }
     Write-Host "[$script:ts] Tick started..." -ForegroundColor Cyan
-    $tickPrompt = 'Live tick. The live game data and your build intent are included below - answer directly from them. Output up to 4 hidden reasoning lines first (>>), then the ===COACH=== readout exactly per your format.'
     $p = $null
-    try { $p = Start-CoachRun -Prompt $tickPrompt -OutFile $script:tickOut -ErrFile $script:tickErr -Champ $script:sessionChamp } catch { $p = $null }
+    try { $p = Start-CoachRun -ArgLine $prep.ArgLine -OutFile $script:tickOut -ErrFile $script:tickErr } catch { $p = $null }
     if (-not $p) {
+        $script:inferencesThisGame = [math]::Max(0, $script:inferencesThisGame - 1)
         Handle-TickFailure -Reason 'could not start inference worker'
         return
     }
@@ -777,16 +991,19 @@ function Update-Workers {
             }
             $snap = $script:tickSnapshot
             $sameSession = ($snap -and ("$($snap.Session)" -eq $script:sessionId))
-            if ($valid -and $sameSession) {
-                Complete-Inference -RequestId $script:tickRequestId -Status 'ok'
+            $snapAge = $null
+            if ($snap -and ($null -ne $snap.CapturedAtSec)) { $snapAge = (Get-ElapsedSeconds) - [double]$snap.CapturedAtSec }
+            if ($valid -and $sameSession -and ($null -ne $snapAge) -and ($snapAge -le $MaxSourceAgeSeconds)) {
+                $rid = $script:tickRequestId
+                Complete-Inference -RequestId $rid -Status 'ok'
                 $script:tickRequestId = ''
-                Publish-Text -Path $script:coachFile -Text $body
-                Publish-Envelope -Path $script:coachMeta -Kind 'coach' -Status 'ok' -Text $body -ErrorText '' -ObservedGameTime $snap.GameTime -Seq $snap.Seq
+                $null = Send-TimelineEvent -Kind 'advice' -AdviceKind 'coach' -Text $body -RequestId $rid -GameTime ([double]$snap.GameTime) -Data @{ seq = [int]$snap.Seq; sourceAgeSec = [math]::Round($snapAge, 3); role = $script:myPosition }
+                Publish-Record -JsonPath $script:coachMeta -TextPath $script:coachFile -Kind 'coach' -Status 'ok' -Text $body -ErrorText '' -ObservedGameTime $snap.GameTime -Seq $snap.Seq -SourceAgeSec $snapAge -Extra @{ requestId = $rid; role = $script:myPosition }
                 $script:coachSessionId = $script:sessionId
                 Write-Host $body
                 Write-Host ''
                 $script:tickFails = 0
-                $script:nextTickAt = [datetime]::Now.AddSeconds($TickSeconds)
+                $script:nextTickAtSec = (Get-ElapsedSeconds) + $TickSeconds
                 $script:tickProc = $null
                 $script:tickWatch = $null
                 $script:tickSnapshot = $null
@@ -794,7 +1011,8 @@ function Update-Workers {
                 $reason = 'invalid or empty output'
                 if ($code -ne 0) { $reason = "exit code $code" }
                 elseif (-not $body) { $reason = 'missing or empty ===COACH=== block' }
-                if (-not $sameSession) { $reason = 'stale result from a previous session' }
+                elseif (-not $sameSession) { $reason = 'stale result from a previous session' }
+                elseif (($null -ne $snapAge) -and ($snapAge -gt $MaxSourceAgeSeconds)) { $reason = ("source snapshot too old ({0:0}s)" -f $snapAge) }
                 Complete-Inference -RequestId $script:tickRequestId -Status 'failed' -Data @{ reason = $reason }
                 $script:tickRequestId = ''
                 Handle-TickFailure -Reason $reason
@@ -828,27 +1046,34 @@ function Update-Workers {
             }
             $ad = $script:activeDeath
             $sameSession = ($ad -and ("$($ad.Session)" -eq $script:sessionId))
+            $deathAge = $null
+            if ($ad) { $deathAge = (Get-ElapsedSeconds) - [double]$ad.DetectedAtSec }
             $script:deathProc = $null
             $script:deathWatch = $null
-            if ($valid -and $sameSession) {
-                Complete-Inference -RequestId $script:deathRequestId -Status 'ok'
+            if ($valid -and $sameSession -and ($null -ne $deathAge) -and ($deathAge -le $MaxSourceAgeSeconds)) {
+                $rid = $script:deathRequestId
+                Complete-Inference -RequestId $rid -Status 'ok'
                 $script:deathRequestId = ''
                 $parsed = ConvertFrom-DeathReport -Text $body
-                Publish-Text -Path $script:deathFile -Text $body
-                Publish-Envelope -Path $script:deathMeta -Kind 'death' -Status 'ok' -Text $body -ErrorText '' -ObservedGameTime $ad.GameTime -Seq $ad.Seq -Extra @{
-                    sessionId = $script:sessionId
+                $null = Send-TimelineEvent -Kind 'advice' -AdviceKind 'death' -Text $body -RequestId $rid -GameTime ([double]$ad.GameTime) -Data @{ clock = $ad.Clock; eventId = $ad.Key; sourceAgeSec = [math]::Round($deathAge, 3) }
+                $observedAt = (Get-Date).ToUniversalTime().ToString('o')
+                Publish-Record -JsonPath $script:deathMeta -TextPath $script:deathFile -Kind 'death' -Status 'ok' -Text $body -ErrorText '' -ObservedGameTime $ad.GameTime -Seq $ad.Seq -SourceAgeSec $deathAge -Extra @{
+                    requestId = $rid
+                    eventId = $ad.Key
                     clock = $ad.Clock
                     gameClock = $ad.Clock
                     killer = $ad.Killer
                     killedByChampion = [bool]$ad.KilledByChampion
                     eventTime = $ad.Time
-                    observedAt = (Get-Date).ToUniversalTime().ToString('o')
+                    detectedAt = $ad.DetectedAtUtc
+                    observedAt = $observedAt
                     died = $parsed.Died
                     facts = @($parsed.Facts)
                     hypotheses = @($parsed.Hypotheses)
                     now = $parsed.Now
                     next = $parsed.Next
                     doNow = $parsed.DoNow
+                    role = $script:myPosition
                     raw = $out
                 }
                 $script:processedDeathKeys[$ad.Key] = $true
@@ -861,10 +1086,15 @@ function Update-Workers {
                 $reason = 'invalid or empty output'
                 if ($code -ne 0) { $reason = "exit code $code" }
                 elseif (-not $body) { $reason = 'missing or empty ===DEATH=== block' }
-                if (-not $sameSession) { $reason = 'stale result from a previous session' }
+                elseif (-not $sameSession) { $reason = 'stale result from a previous session' }
+                elseif (($null -ne $deathAge) -and ($deathAge -gt $MaxSourceAgeSeconds)) { $reason = ("source snapshot too old ({0:0}s)" -f $deathAge) }
                 Complete-Inference -RequestId $script:deathRequestId -Status 'failed' -Data @{ reason = $reason }
                 $script:deathRequestId = ''
-                Handle-DeathFailure -Reason $reason
+                if (($null -ne $deathAge) -and ($deathAge -gt $MaxSourceAgeSeconds)) {
+                    Handle-DeathFailure -Reason $reason -Permanent
+                } else {
+                    Handle-DeathFailure -Reason $reason
+                }
             }
         }
     }
@@ -891,9 +1121,24 @@ function Get-LiveText {
     return $t
 }
 
-function Start-CoachRun {
-    param([string]$Prompt, [string]$OutFile, [string]$ErrFile, [string]$Champ)
+function Test-LiveDataAvailable {
+    param([string]$Text)
+    if (-not $Text) { return $false }
+    $t = "$Text".Trim()
+    if (-not $t) { return $false }
+    if ($t -match '^Not in a live game') { return $false }
+    if ($t -notmatch '(?m)^GAME ') { return $false }
+    return $true
+}
+
+function New-CoachPrompt {
+    param([string]$BasePrompt, [string]$Champ, [string]$Role = '')
     $data = Get-LiveText -SourceFile $script:liveTmp
+    if (-not (Test-LiveDataAvailable -Text $data)) {
+        $why = 'empty formatter output'
+        if ($data -and ("$data".Trim() -match '^Not in a live game')) { $why = 'not in a live game' }
+        return [pscustomobject]@{ Ok = $false; Error = $why; Prompt = ''; ArgLine = '' }
+    }
     $intent = ''
     $intentFile = Join-Path $script:dir 'build_intent.txt'
     if (Test-Path -LiteralPath $intentFile) {
@@ -915,17 +1160,26 @@ function Start-CoachRun {
     if ($script:coachSessionId -and ($script:coachSessionId -eq $script:sessionId)) {
         $prev = (Read-FileText $script:coachFile).Trim()
     }
-    $packBlock = Get-ChampionPackBlock -Champ $Champ
-    $full = $Prompt + "`r`n`r`n=== GAME DATA (live) ===`r`n" + $data + "`r`n=== BUILD INTENT (current champion only) ===`r`n" + $intent + $packBlock + "`r`n=== PREVIOUS READOUT ===`r`n" + $prev
+    $packBlock = Get-ChampionPackBlock -Champ $Champ -Role $Role
+    $full = $BasePrompt + "`r`n`r`n=== GAME DATA (live) ===`r`n" + $data + "`r`n=== BUILD INTENT (current champion only) ===`r`n" + $intent + $packBlock + "`r`n=== PREVIOUS READOUT ===`r`n" + $prev
     $safe = $full.Replace([char]34, [char]39)
     $quoted = ([char]34) + $safe + ([char]34)
     $argLine = 'run --dir "' + $script:dir + '" --agent lol-coach --variant low --title "LoL AutoCoach" ' + $quoted
+    if ($argLine.Length -gt $MaxCommandLineChars) {
+        return [pscustomobject]@{ Ok = $false; Error = ("prompt too large: {0} chars (limit {1})" -f $argLine.Length, $MaxCommandLineChars); Prompt = ''; ArgLine = '' }
+    }
+    return [pscustomobject]@{ Ok = $true; Error = ''; Prompt = $full; ArgLine = $argLine }
+}
+
+function Start-CoachRun {
+    param([string]$ArgLine, [string]$OutFile, [string]$ErrFile)
+    if (-not $ArgLine) { return $null }
     if (Test-Path -LiteralPath $OutFile) { Remove-Item -LiteralPath $OutFile -Force -ErrorAction SilentlyContinue }
-    return Start-Process -FilePath $ocExe -ArgumentList $argLine -RedirectStandardOutput $OutFile -RedirectStandardError $ErrFile -NoNewWindow -PassThru
+    return Start-Process -FilePath $ocExe -ArgumentList $ArgLine -RedirectStandardOutput $OutFile -RedirectStandardError $ErrFile -NoNewWindow -PassThru
 }
 
 function Get-ChampionPackBlock {
-    param([string]$Champ, [int]$MaxChars = 1800)
+    param([string]$Champ, [string]$Role = '', [int]$MaxChars = 1800)
     if (-not $Champ) { return '' }
     $packScript = Join-Path $script:dir 'ui\packs.py'
     if (-not (Test-Path -LiteralPath $packScript)) { return '' }
@@ -936,8 +1190,10 @@ function Get-ChampionPackBlock {
     }
     if (-not $py) { return '' }
     $packText = ''
+    $packArgs = @($packScript, '--prompt', '--champ', "$Champ", '--max-chars', $MaxChars)
+    if ($Role) { $packArgs += @('--role', "$Role") }
     try {
-        $out = & $py $packScript --prompt --champ "$Champ" --max-chars $MaxChars 2>$null
+        $out = & $py @packArgs 2>$null
         if ($LASTEXITCODE -ne 0) { return '' }
         $packText = (($out | Out-String).Trim())
     } catch {
@@ -950,7 +1206,11 @@ function Get-ChampionPackBlock {
 try {
     Write-Host 'Checking Data Dragon assets...' -ForegroundColor DarkGray
     try { Update-DdragonAsset -Names @('item', 'champion') } catch { }
-    Close-Session
+    Close-Session -Reason 'startup'
+    if (-not $ocExe) {
+        Write-Host 'opencode is not on PATH. Cleared stale coach output; aborting.' -ForegroundColor Red
+        exit 1
+    }
 
     Write-Host 'LoL AutoCoach - ticks every ' -NoNewline -ForegroundColor Green
     Write-Host "$TickSeconds s" -NoNewline -ForegroundColor Yellow
@@ -970,19 +1230,32 @@ try {
 
         if (-not $d -or -not $d.gameData) {
             $script:apiFails++
-            if ($script:sessionActive -and $script:apiFails -ge 3) {
-                Write-Host "[$script:ts] Game ended or Live API unavailable - closing session." -ForegroundColor DarkGray
-                Close-Session
-            } elseif (-not $script:sessionActive) {
-                Write-Host "[$script:ts] Waiting for a game..." -ForegroundColor DarkGray
+            if ($script:sessionActive) {
+                if (-not $script:disconnected) {
+                    $script:disconnected = $true
+                    $script:apiDownSinceSec = Get-ElapsedSeconds
+                    Send-Coverage -Action 'stop' -Reason 'disconnected'
+                    $null = Send-TimelineEvent -Kind 'status' -Label ("disconnected after {0} failed polls" -f $script:apiFails) -Data @{ reason = 'live_client_unavailable'; lastGameTime = [double]$script:lastGameTime } -GameTime $script:lastGameTime
+                    Publish-Record -JsonPath $script:coachMeta -TextPath $script:coachFile -Kind 'coach' -Status 'disconnected' -Text (Read-FileText $script:coachFile) -ErrorText 'live client unavailable' -ObservedGameTime $script:lastGameTime -Seq $script:seq -Extra @{ role = $script:myPosition }
+                    Write-Host "[$script:ts] Live API unavailable - session kept, waiting for it to return." -ForegroundColor DarkGray
+                } elseif (((Get-ElapsedSeconds) - $script:apiDownSinceSec) -ge $NoGameEndSeconds) {
+                    Write-Host "[$script:ts] No live game for $([int]$NoGameEndSeconds)s - closing session (no_game_timeout)." -ForegroundColor DarkGray
+                    Close-Session -Reason 'no_game_timeout'
+                }
             } else {
-                Write-Host "[$script:ts] Live API temporarily unavailable ($($script:apiFails)/3) - keeping session state." -ForegroundColor DarkGray
+                Write-Host "[$script:ts] Waiting for a game..." -ForegroundColor DarkGray
             }
             Update-Workers
             Start-Sleep -Seconds $IdleSeconds
             continue
         }
         $script:apiFails = 0
+        $script:lastGoodPollAtSec = Get-ElapsedSeconds
+        if ($script:disconnected) {
+            $script:disconnected = $false
+            Send-Coverage -Action 'start' -Reason 'reconnected'
+            Write-Host "[$script:ts] Live API is back - resuming coverage." -ForegroundColor DarkGray
+        }
 
         $g = $d.gameData
         $ap = $d.activePlayer
@@ -993,12 +1266,14 @@ try {
         $script:myName = ''
         $script:myGameName = ''
         $script:myTagLine = ''
+        $script:myPosition = ''
         if ($me) {
             $script:myName = "$($me.riotId)"
             if (-not $script:myName) { $script:myName = "$($me.riotIdGameName)" }
             if (-not $script:myName) { $script:myName = "$($me.summonerName)" }
             $script:myGameName = "$($me.riotIdGameName)"
             $script:myTagLine = "$($me.riotIdTagLine)"
+            $script:myPosition = "$($me.position)"
         }
         if (-not $script:myName) {
             $script:myName = "$($ap.riotId)"
@@ -1006,7 +1281,9 @@ try {
             if (-not $script:myName) { $script:myName = "$($ap.summonerName)" }
             $script:myGameName = "$($ap.riotIdGameName)"
             $script:myTagLine = "$($ap.riotIdTagLine)"
+            $script:myPosition = "$($ap.position)"
         }
+        if ($script:myPosition -ieq 'NONE') { $script:myPosition = '' }
         $newChamp = ''
         if ($me) { $newChamp = "$($me.championName)" }
 
@@ -1018,10 +1295,24 @@ try {
         $mapChanged = ($script:sessionActive -and $script:sessionMap -and ("$($g.mapNumber)" -ne $script:sessionMap))
         if ($script:sessionActive -and ($rollback -or $champChanged -or $playerChanged -or $modeChanged -or $mapChanged)) {
             Write-Host "[$script:ts] New game detected (rollback=$rollback champ=$champChanged player=$playerChanged) - resetting session state." -ForegroundColor Yellow
-            Start-Session -Data $d -Champ $newChamp
+            Start-Session -Data $d -Champ $newChamp -Reason 'new_game'
         } elseif (-not $script:sessionActive) {
             Write-Host "[$script:ts] In game as $newChamp - starting session." -ForegroundColor Green
-            Start-Session -Data $d -Champ $newChamp
+            Start-Session -Data $d -Champ $newChamp -Reason 'game_detected'
+        }
+        if ($script:sessionActive -and (-not $script:gameStartAcked)) {
+            if ((Get-ElapsedSeconds) -ge $script:nextSessionProbeSec) {
+                $script:nextSessionProbeSec = (Get-ElapsedSeconds) + 10
+                $sid = Get-ServerSessionId
+                if ($sid -and ($sid -ne $script:sessionId)) {
+                    $script:sessionId = $sid
+                    $script:sessionIdSource = 'server'
+                    $script:gameStartAttempts = 0
+                    $script:gameStartNextTrySec = 0.0
+                    Write-Host "[$script:ts] Adopted server session id." -ForegroundColor DarkGray
+                }
+            }
+            $null = Send-GameStart
         }
         $script:lastGameTime = $gt
         $script:seq++
@@ -1038,7 +1329,7 @@ try {
         }
         $sig = (($sigParts | Sort-Object) -join ',')
         if ($script:lastItemSignature -and ($sig -ne $script:lastItemSignature)) {
-            Send-TimelineEvent -Kind 'item' -Label ("inventory changed: {0}" -f $sig)
+            $null = Send-TimelineEvent -Kind 'item' -Label ("inventory changed: {0}" -f $sig)
             $script:forceTick = $true
         }
         $script:lastItemSignature = $sig
@@ -1046,7 +1337,7 @@ try {
         $nextObj = Get-NextObjective -Data $d -GameTime $gt
         if ($nextObj -and ($nextObj.Key -ne $script:lastObjectiveKey)) {
             $script:lastObjectiveKey = $nextObj.Key
-            Send-TimelineEvent -Kind 'objective' -Label $nextObj.Label -Data @{ secondsLeft = [int]$nextObj.SecondsLeft }
+            $null = Send-TimelineEvent -Kind 'objective' -Label $nextObj.Label -Data @{ secondsLeft = [int]$nextObj.SecondsLeft; kind = $nextObj.Kind; soul = $nextObj.Soul }
             $script:forceTick = $true
         }
 
@@ -1072,6 +1363,8 @@ try {
             elseif (($script:activeDeath.Key -ne $bestKey) -and ($bestT -gt ([double]$script:activeDeath.Time + 0.001))) { $replace = $true }
             if ($replace) {
                 if ($script:deathProc) {
+                    Complete-Inference -RequestId $script:deathRequestId -Status 'superseded' -Data @{ reason = 'newer death detected' }
+                    $script:deathRequestId = ''
                     Stop-ProcessTree $script:deathProc
                     $script:deathProc = $null
                     $script:deathWatch = $null
@@ -1079,13 +1372,13 @@ try {
                 New-DeathRecord -Key $bestKey -Time $bestT -Killer $bestKiller -KilledByChampion (Test-KillerIsChampion -Data $d -Killer $bestKiller)
             }
         }
-        if ($script:activeDeath -and -not $script:deathProc -and ([datetime]::Now -ge $script:deathRetryAt)) {
+        if ($script:activeDeath -and -not $script:deathProc -and ((Get-ElapsedSeconds) -ge $script:deathRetryAtSec)) {
             if (($script:activeDeath.State -eq 'detected') -or ($script:activeDeath.State -eq 'queued') -or ($script:activeDeath.State -eq 'failed')) {
                 Start-DeathWorker
             }
         }
 
-        if (-not $script:tickProc -and (([datetime]::Now -ge $script:nextTickAt) -or $script:forceTick)) {
+        if (-not $script:tickProc -and (((Get-ElapsedSeconds) -ge $script:nextTickAtSec) -or $script:forceTick)) {
             $script:forceTick = $false
             Start-TickWorker
         }
@@ -1093,7 +1386,8 @@ try {
         Start-Sleep -Seconds $PollSeconds
     }
 } finally {
-    Stop-Workers
+    try { Close-Session -Reason 'collector_stopped' } catch { }
+    Stop-Workers -DeadReason 'cancelled'
     foreach ($f in @($script:liveTmp, $script:scriptOut, ($script:scriptOut + '.err'), $script:tickOut, $script:tickErr, $script:deathOut, $script:deathErr)) {
         Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
     }

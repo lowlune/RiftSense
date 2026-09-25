@@ -93,11 +93,15 @@ function Test-SamePlayer {
 }
 
 $d = $null
-if ($Source -and (Test-Path -LiteralPath $Source)) {
-    try {
-        $raw = Get-Content -LiteralPath $Source -Raw -Encoding UTF8 -ErrorAction Stop
-        if ($raw) { try { $d = $raw | ConvertFrom-Json } catch { $d = $null } }
-    } catch { $d = $null }
+$sourceProvided = $false
+if ($Source) {
+    $sourceProvided = $true
+    if (Test-Path -LiteralPath $Source) {
+        try {
+            $raw = Get-Content -LiteralPath $Source -Raw -Encoding UTF8 -ErrorAction Stop
+            if ($raw) { try { $d = $raw | ConvertFrom-Json } catch { $d = $null } }
+        } catch { $d = $null }
+    }
 }
 if (-not $d) {
     $tmp = Join-Path $env:TEMP ("lol_live_" + [guid]::NewGuid().ToString('N') + ".json")
@@ -113,8 +117,12 @@ if (-not $d) {
     if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
 }
 if (-not $d -or -not $d.gameData) {
+    if ($sourceProvided -and (Test-Path -LiteralPath $Source)) {
+        Write-Output ("Live game snapshot unreadable: {0}" -f $Source)
+        exit 3
+    }
     Write-Output 'Not in a live game (Live Client Data API not reachable).'
-    exit 0
+    exit 2
 }
 
 $itemGold = @{}
