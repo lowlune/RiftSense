@@ -6,7 +6,8 @@ PLAN[Nocturne]: Stridebreaker -> Black Cleaver -> Sterak's Gage -> Guardian Ange
 PLAN[default]: continue the build path the player is already on; suggest the strongest next item for their champion and this game
 
 Notes for the coach:
-- Plan syntax: PLAN[Champion]: Item -> Item ... at the start of the line (no leading spaces). The UI parser also tolerates a legacy PLAN: ... default line, but the PowerShell path does not; keep using PLAN[Champion] for champions.
+- Plan syntax: PLAN[Champion]: Item -> Item ... at the start of the line (no leading spaces). The UI parser also tolerates a legacy bare PLAN: ... default line, but AutoCoach matches only PLAN[Champion] and PLAN[default]; keep using the bracketed form so both paths read the same plan.
+- The plan editor writes build_intent.txt.bak before each save; the .bak is runtime-only and gitignored - do not treat it as a second plan.
 - Always use the PLAN line for the champion the player is actually playing (given in the game data), never another champion's plan.
 - Boots priority: Plated Steelcaps vs heavy AD, Mercury's Treads vs heavy CC.
 - Every purchase suggestion must include a short "because ..." reason, a next target for surplus gold, and one trap purchase to avoid.

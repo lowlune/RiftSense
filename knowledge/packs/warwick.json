@@ -1,10 +1,15 @@
 {
-  "schema": "riftsense.pack.v1",
+  "schema": "riftsense.pack.v2",
   "champion": "Warwick",
   "aliases": ["WW", "Warwick the Uncaged Wrath"],
   "roles": ["jungle"],
   "patch": "26.19",
   "retrieved": "2026-09-25",
+  "review": {
+    "reviewed": "2026-09-25",
+    "reviewer": "RiftSense audit fix pass 2 (packs/docs)",
+    "scope": "Cleanse and tap-Q refund claims re-fetched from the live wiki on 2026-09-25; both were wrong or conditional, corrected and left unverified for runtime behavior; categories separated"
+  },
   "sources": [
     "https://wiki.leagueoflegends.com/en-us/Warwick",
     "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Eternal_Hunger",
@@ -65,12 +70,38 @@
       "verified": true
     },
     {
-      "name": "R counters",
-      "value": "A target that is CC-immune or spell-shielded when Warwick collides stops the channel from starting; Cleanse removes the suppression but does not stop the channel damage ticks",
+      "name": "R start counters",
+      "value": "A target that is CC-immune or spell-shielded when Warwick collides stops the channel from starting",
       "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Infinite_Duress",
       "verified": true
+    },
+    {
+      "name": "R vs suppression removal",
+      "value": "Live wiki note (re-checked 2026-09-25): cleansing the suppression does not interrupt the channel; Warwick continues to strike but deals no damage. The pack's earlier claim that the target still takes full channel damage was wrong. Runtime interaction not independently tested - treat as unverified behavior",
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Infinite_Duress",
+      "verified": false
+    },
+    {
+      "name": "Q tap cooldown refund condition",
+      "value": "Live wiki note (re-checked 2026-09-25): tapping Jaws of the Beast refunds its cooldown only if the target dies before Warwick reaches them; holding the cast forfeits the refund; mana is not refunded. The wiki notes the refund can occasionally fail (bug). Runtime not independently tested - do not quote as a guaranteed refund",
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Jaws_of_the_Beast",
+      "verified": false
     }
   ],
+  "derived": [],
+  "heuristics": [
+    {
+      "name": "Build plan",
+      "note": "Follow PLAN[Warwick] in build_intent.txt (Blade of The Ruined King -> Plated Steelcaps -> Thornmail -> Kaenic Rookern -> Sterak's Gage); propose a one-clause swap instead of rewriting the plan",
+      "source": "build_intent.txt"
+    },
+    {
+      "name": "Do not hold Q on a dying target",
+      "note": "holding Q forfeits the tap refund; if the target is about to die before you reach them, tap instead (the refund itself is unverified behavior)",
+      "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Jaws_of_the_Beast"
+    }
+  ],
+  "statistics": [],
   "itemNotes": [
     {
       "name": "Blade of The Ruined King",
@@ -101,66 +132,69 @@
       "note": "3200 g; burst shield when taking large damage - anti burst-AD third item when the enemy can lock Warwick down",
       "source": "Data Dragon 16.19.1 items.json (id 3053)",
       "verified": true
-    },
-    {
-      "name": "Build plan source",
-      "note": "Follow PLAN[Warwick] in build_intent.txt (Blade of The Ruined King -> Plated Steelcaps -> Thornmail -> Kaenic Rookern -> Sterak's Gage); propose a one-clause swap instead of rewriting the plan",
-      "source": "build_intent.txt",
-      "verified": true
     }
   ],
   "decisionRules": [
     {
       "rule": "Max Q first; Q applies on-hit effects, so Blade of The Ruined King turns Q into a % max HP nuke against health stackers",
       "preconditions": ["BotRK is owned or next in the plan", "target has high max HP"],
+      "triggers": ["items"],
       "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Jaws_of_the_Beast",
       "verified": true
     },
     {
-      "rule": "Hold Q against mobile targets so the displacement immunity follows their dash or blink; tap Q when chasing a kill for the cooldown refund",
+      "rule": "Hold Q against mobile targets so the displacement immunity follows their dash or blink; the held bite follows the target rather than ending at the first point",
       "preconditions": ["target has an escape dash/blink", "Q is off cooldown"],
+      "triggers": ["ult_ready"],
       "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Jaws_of_the_Beast",
       "verified": true
     },
     {
       "rule": "Start ganks with W active: the active marks the target for 8 s regardless of health, and the trail movement speed rebuilds over 3.5 s after combat starts, so approach from fog rather than running in plain sight",
       "preconditions": ["W is off cooldown", "gank path is not already warded (unknown is fine, label it)"],
+      "triggers": ["ult_ready"],
       "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Blood_Hunt",
       "verified": true
     },
     {
       "rule": "Use E's 35-55% damage reduction before committing to a melee trade, then recast for the fear to lock the target for Q/R",
       "preconditions": ["E is off cooldown", "enemy burst is committed or you are diving"],
+      "triggers": ["ult_ready"],
       "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Primal_Howl",
       "verified": true
     },
     {
       "rule": "Do not open with R into a spell shield or a CC-immune target; the channel will not start, wasting the 110-70 s cooldown",
       "preconditions": ["enemy defensive cooldowns are observed or unknown (state as unknown)", "R is up"],
+      "triggers": ["ult_ready"],
       "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Infinite_Duress",
       "verified": true
     },
     {
       "rule": "After R lands, R deals on-hit damage and heals 100% of the post-mitigation damage - R is the burst heal, so it is acceptable to R a front-liner to survive when the carries are unreachable",
       "preconditions": ["R is up", "Warwick is low HP and must stay alive"],
+      "triggers": ["ult_ready"],
       "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Infinite_Duress",
       "verified": true
     },
     {
       "rule": "Take Thornmail over a damage item when the enemy team has 2+ sustained healing sources; Grievous Wounds cuts healing 40%",
       "preconditions": ["enemy healing sources observed", "the fight is long enough for GW uptime"],
+      "triggers": ["enemy_items"],
       "source": "Data Dragon 16.19.1 items.json (id 3075)",
       "verified": true
     },
     {
       "rule": "Against burst magic take Kaenic Rookern; against sustained magic take Force of Nature or Spirit Visage; against burst AD take Sterak's Gage after core",
       "preconditions": ["enemy damage profile can be classified", "item slot and gold available"],
+      "triggers": ["enemy_items"],
       "source": "Data Dragon 16.19.1 items.json",
       "verified": true
     },
     {
       "rule": "Do not assume the passive heal saves you: Grievous Wounds (40%) and Ignite cut all self-healing, so back off while anti-heal is active",
       "preconditions": ["enemy anti-heal observed", "Warwick is relying on Q/passive healing"],
+      "triggers": ["enemy_items"],
       "source": "https://wiki.leagueoflegends.com/en-us/Grievous_Wounds",
       "verified": true
     }
@@ -186,9 +220,21 @@
     },
     {
       "name": "Cleanse / QSS",
-      "note": "Cleanse removes the R suppression but does not stop the damage ticks; the target still takes the full channel damage",
+      "note": "Live wiki note: cleansing the suppression does not interrupt the channel; Warwick continues to strike but deals no damage. Runtime untested - do not present as a guaranteed escape from the channel duration",
       "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Warwick/Infinite_Duress",
-      "verified": true
+      "verified": false
+    }
+  ],
+  "abstentions": [
+    {
+      "when": "R engage plan",
+      "missing": "enemy spell shields and CC-immunity state",
+      "reason": "the channel may not start; tell the player what to check first"
+    },
+    {
+      "when": "gank path claim",
+      "missing": "ward coverage (not exposed by the live client)",
+      "reason": "state it as unknown instead of claiming the path is unwarded"
     }
   ]
 }

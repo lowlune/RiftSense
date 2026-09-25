@@ -1,10 +1,15 @@
 {
-  "schema": "riftsense.pack.v1",
+  "schema": "riftsense.pack.v2",
   "champion": "Nunu & Willump",
   "aliases": ["Nunu", "Willump", "Nunu and Willump"],
   "roles": ["jungle"],
   "patch": "26.19",
   "retrieved": "2026-09-23",
+  "review": {
+    "reviewed": "2026-09-25",
+    "reviewer": "RiftSense audit fix pass 2 (packs/docs)",
+    "scope": "categories separated; Q heal ambiguity fixed against knowledge/nunu-modern.md:26-27; derived/heuristic/statistic claims downgraded to unverified"
+  },
   "sources": [
     "https://wiki.leagueoflegends.com/en-us/Nunu",
     "https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume",
@@ -42,7 +47,7 @@
     },
     {
       "name": "Q - Consume vs champions",
-      "value": "60/100/140/180/220 (+65% AP) (+5% bonus HP) magic damage; heal is only 60% of that; camps heal far more, so Q a camp/minion over a champion when a fight allows",
+      "value": "60/100/140/180/220 (+65% AP) (+5% bonus HP) magic damage; heal is 60% of the non-champion heal formula, not 60% of this damage: base 39/57/75/93/111 (+54% AP) (+6% bonus HP), empowered 58.5/85.5/112.5/139.5/166.5 (+81% AP) (+9% bonus HP); camps heal far more, so Q a camp/minion over a champion when a fight allows",
       "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume",
       "verified": true
     },
@@ -54,14 +59,8 @@
     },
     {
       "name": "E - Snowball Barrage",
-      "value": "50-70 mana, CD 14/13/12/11/10; per hit 15/22.5/30/37.5/45 (+12% AP); 9 hits max (3 volleys) = 405 base (+108% AP) total; 3 hits slow and Snowbound targets root for 0.5-1.62 s 3 s after the first cast",
+      "value": "50-70 mana, CD 14/13/12/11/10; per hit 15/22.5/30/37.5/45 (+12% AP); a 3-hit volley slows, and Snowbound targets root 0.5-1.62 s by level 3 s after the first cast",
       "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Snowball_Barrage",
-      "verified": true
-    },
-    {
-      "name": "E AP arithmetic (audit correction)",
-      "value": "9 hits x 12% AP = +108% AP max; the older '+135% AP' figure was an arithmetic error and must not be repeated",
-      "source": "derived from https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Snowball_Barrage",
       "verified": true
     },
     {
@@ -119,6 +118,44 @@
       "verified": false
     }
   ],
+  "derived": [
+    {
+      "name": "E max total",
+      "value": "9 hits x 15/22.5/30/37.5/45 = 135/202.5/270/337.5/405 base; 9 hits x 12% AP = +108% AP; the older '+135% AP' figure was an arithmetic error and must not be repeated",
+      "source": "derived from https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Snowball_Barrage"
+    },
+    {
+      "name": "Q + Smite secure window",
+      "value": "with Unleashed Smite (1000): L6 Q rank 3 (800) = 1800 and L9 Q rank 5 (1200) = 2200; arithmetic only, assumes no damage reduction applies - never present as exact while the Dragon Slayer interaction is unresolved",
+      "source": "derived from https://wiki.leagueoflegends.com/en-us/Smite and https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume"
+    }
+  ],
+  "heuristics": [
+    {
+      "name": "Give drake when 2+ levels behind",
+      "note": "prefer to give the drake and play the Herald timer instead; this is a risk-preference rule, not a proven 'cannot out-secure' fact",
+      "source": "heuristic - no external source"
+    },
+    {
+      "name": "Failed gank cost",
+      "note": "treat a failed gank as an unquantified opportunity cost; never claim it equals a full camp cycle as if measured",
+      "source": "heuristic - no external source"
+    }
+  ],
+  "statistics": [
+    {
+      "name": "Boot win-rate comparison",
+      "note": "op.gg current patch: Plated Steelcaps 55.03% WR (33.37% pick) vs Sorcerer's Shoes 50.17% (28.53%); raw win-rate comparison with undisclosed sample/rank - not causal and not matchup-specific",
+      "source": "https://op.gg/lol/champions/nunu/build/jungle",
+      "sample": "sample size and rank not disclosed"
+    },
+    {
+      "name": "Sampled core builds",
+      "note": "op.gg cores are tiny samples with selection bias (winning players pick items); treat as hypotheses to test, never as unconditional advice",
+      "source": "https://op.gg/lol/champions/nunu/build/jungle",
+      "sample": "13/22/27 games per core"
+    }
+  ],
   "itemNotes": [
     {
       "name": "Liandry's Torment",
@@ -149,104 +186,92 @@
       "note": "40% reduced healing; Oblivion Orb 800 g applies it on magic damage; Morellonomicon 2850 g upgrades it",
       "source": "https://wiki.leagueoflegends.com/en-us/Grievous_Wounds",
       "verified": true
-    },
-    {
-      "name": "Boot win-rate comparison",
-      "note": "op.gg current patch: Plated Steelcaps 55.03% WR (33.37% pick) vs Sorcerer's Shoes 50.17% (28.53%); raw win-rate comparison with undisclosed sample/rank - not causal and not matchup-specific",
-      "source": "https://op.gg/lol/champions/nunu/build/jungle",
-      "verified": false
-    },
-    {
-      "name": "Sampled core builds",
-      "note": "op.gg cores are tiny samples (13/22/27 games) with selection bias (winning players pick items); treat as hypotheses to test, never as unconditional advice",
-      "source": "https://op.gg/lol/champions/nunu/build/jungle",
-      "verified": false
     }
   ],
   "decisionRules": [
     {
       "rule": "At a drake spawn, start the dragon when the enemy jungler shows top AND you have pit vision plus lane priority; otherwise do not blind-start it",
       "preconditions": ["enemy jungler position observed", "vision on the pit", "lane priority or lanes cannot collapse", "Smite stage confirmed"],
+      "triggers": ["enemy_jungler_position", "vision", "dragon_slayer_stacks"],
       "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Consume",
       "verified": true
     },
     {
       "rule": "Secure window uses your actual Smite stage: base Smite adds 600, Unleashed adds 1000, Primal adds 1400; with Unleashed, L6 = 800+1000 = 1800 and L9 = 1200+1000 = 2200",
       "preconditions": ["Q rank known", "Smite stage confirmed from pet treats (15/35)"],
+      "triggers": ["smite_stage", "q_rank"],
       "source": "https://wiki.leagueoflegends.com/en-us/Smite",
       "verified": true
     },
     {
       "rule": "Do not call a concrete secure number on your 2nd/3rd drake; treat effective burst as unknown because the Dragon Slayer reduction interaction is unverified",
       "preconditions": ["attacking team already has at least one elemental drake"],
+      "triggers": ["dragon_slayer_stacks"],
       "source": "https://wiki.leagueoflegends.com/en-us/Dragon_pit",
       "verified": true
     },
     {
       "rule": "If they have 2+ Heartsteel stackers, buy Liandry's before Rylai's; also deny Heartsteel stacks by breaking 700-unit contact",
       "preconditions": ["enemy items observed", "2+ enemy Heartsteel holders or HP stackers"],
+      "triggers": ["enemy_items"],
       "source": "https://wiki.leagueoflegends.com/en-us/Heartsteel",
       "verified": true
     },
     {
       "rule": "If they have a fed AP burst mage, take Zhonya's after core; remember every item active except Shurelya's, Youmuu's and Randuin's interrupts your R channel",
       "preconditions": ["enemy AP burst threat identified", "R channel is part of the plan"],
+      "triggers": ["enemy_items"],
       "source": "https://wiki.leagueoflegends.com/en-us/Zhonya%27s_Hourglass",
       "verified": true
     },
     {
       "rule": "If they have 2+ auto-attack carries and you are not snowballing, Plated Steelcaps is the reasonable default over Sorcerer's Shoes; take Sorcs only when snowballing or when AP burst is needed",
       "preconditions": ["enemy damage profile observed", "supporting win-rate data is not causal"],
+      "triggers": ["enemy_items"],
       "source": "https://wiki.leagueoflegends.com/en-us/Module:ItemData/data",
       "verified": true
     },
     {
       "rule": "Match defensive MR to threat type: Kaenic Rookern vs burst magic, Force of Nature vs sustained magic (Cassiopeia/Swain/Ryze)",
       "preconditions": ["enemy magic threat can be classified as burst vs sustained"],
+      "triggers": ["enemy_items"],
       "source": "https://wiki.leagueoflegends.com/en-us/Module:ItemData/data",
       "verified": true
     },
     {
       "rule": "If they have 2+ healers, buy Oblivion Orb (800 g) by first back and finish Morellonomicon by mid-game; every Nunu ability applies Grievous Wounds on magic damage",
       "preconditions": ["enemy healing sources observed", "gold for first back available"],
+      "triggers": ["enemy_items"],
       "source": "https://wiki.leagueoflegends.com/en-us/Grievous_Wounds",
       "verified": true
     },
     {
       "rule": "If you died 2+ times before 8:00, skip Mejai's and stabilise on Voidgrubs and scuttle instead",
       "preconditions": ["death count and game clock observed"],
+      "triggers": ["death_count"],
       "source": "https://wiki.leagueoflegends.com/en-us/Voidgrub_camp",
       "verified": true
     },
     {
       "rule": "If the enemy jungler dies or shows opposite side between 8:00 and 14:45, take Voidgrubs; Q rank 4 plus Unleashed Smite is about 88% of a 2269 HP grub",
       "preconditions": ["enemy jungler position observed", "Q rank 4 (level 7+)", "Unleashed Smite"],
+      "triggers": ["enemy_jungler_position"],
       "source": "https://wiki.leagueoflegends.com/en-us/Voidgrub_camp",
       "verified": true
     },
     {
       "rule": "Teamfight combo: charged W from fog (0.75 s knockup + up to 0.75 s stun), then E to root, then full-channel R on the clustered backline; Flash first, then R",
       "preconditions": ["R is up", "key point-and-click interrupts are down or unknown", "enemies grouped or channelling"],
+      "triggers": ["ult_ready"],
       "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Absolute_Zero",
-      "verified": true
-    },
-    {
-      "rule": "If 2+ levels behind at a drake spawn, prefer to give it and play the Herald timer instead; this is a risk-preference rule, not a proven 'cannot out-secure' fact",
-      "preconditions": ["level gap observed", "Herald window still ahead"],
-      "source": "https://wiki.leagueoflegends.com/en-us/Smite",
       "verified": true
     },
     {
       "rule": "Do not contest an objective without a Smite charge, with R down, or with no vision/priority; Nunu re-enters on the 2:15/5:00 camp cycles instead of flipping blind",
       "preconditions": ["Smite charges, R cooldown and vision state are known"],
+      "triggers": ["smite_charges", "ult_ready", "vision"],
       "source": "https://wiki.leagueoflegends.com/en-us/Template:Data_Nunu/Absolute_Zero",
       "verified": true
-    },
-    {
-      "rule": "A failed gank should be treated as an unquantified opportunity cost; do not claim it equals a full camp cycle as if measured",
-      "preconditions": [],
-      "source": "heuristic",
-      "verified": false
     }
   ],
   "counters": [
@@ -291,6 +316,28 @@
       "note": "It triggers when the HOLDER slows or immobilises an enemy (not when your W/E slows them); expect +50-230 effective HP on the support and their most-wounded ally; re-engage after the 30 s CD",
       "source": "https://wiki.leagueoflegends.com/en-us/Solstice_Sleigh",
       "verified": true
+    }
+  ],
+  "abstentions": [
+    {
+      "when": "drake spawn decision",
+      "missing": "enemy jungler position, pit vision or lane priority",
+      "reason": "no verified safe-start call; say what is unobserved instead"
+    },
+    {
+      "when": "calling a concrete Smite secure number",
+      "missing": "Smite pet stage (15/35 treats) or Q rank",
+      "reason": "burst cannot be computed without the actual stage"
+    },
+    {
+      "when": "2nd or 3rd drake secure call",
+      "missing": "whether Dragon Slayer reduction applies to Q/Smite true damage",
+      "reason": "effective threshold is unknown; do not invent one"
+    },
+    {
+      "when": "route or gank recommendation",
+      "missing": "map position, vision state and enemy cooldowns (not exposed by the live client)",
+      "reason": "output ABSTAIN with the missing field instead of guessing"
     }
   ]
 }
