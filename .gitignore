@@ -4,6 +4,8 @@ coach_latest.json
 death_latest.txt
 death_latest.json
 game_epoch.json
+dashboard_token.txt
+build_intent.txt.bak
 *.err
 *.log
 last_run.tmp

@@ -1,8 +1,11 @@
 import contextlib
+import hashlib
 import http.server
 import json
+import math
 import os
 import re
+import secrets
 import sqlite3
 import ssl
 import tempfile
@@ -12,6 +15,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from datetime import datetime, timezone
 
 try:
     import fcntl
@@ -48,12 +52,24 @@ CHAMP_FILE = os.path.join(ROOT, 'champion.json')
 ITEM_FILE = os.path.join(ROOT, 'items.json')
 BUILD_FILE = os.path.join(ROOT, 'build_intent.txt')
 COACH_FILE = os.path.join(ROOT, 'coach_latest.txt')
+COACH_META_FILE = os.path.join(ROOT, 'coach_latest.json')
 DEATH_FILE = os.path.join(ROOT, 'death_latest.txt')
 DEATH_META_FILE = os.path.join(ROOT, 'death_latest.json')
 EPOCH_FILE = os.path.join(ROOT, 'game_epoch.json')
+TOKEN_FILE = os.path.join(ROOT, 'dashboard_token.txt')
 DB_PATH = os.path.join(os.path.expanduser('~'), '.local', 'share', 'opencode', 'opencode.db')
 PORT = int(os.environ.get('RIFTSENSE_PORT', '7777'))
 STARTED_AT = time.time()
+
+ACTION_TTL = {'death': 60.0, 'objective': 60.0, 'coach': 90.0}
+ACTION_PRIORITY = {'death': 3, 'objective': 2, 'coach': 1}
+ACTION_TEXT_MAX = 2000
+COACH_META_MAX_BYTES = 262144
+DEATH_MATCH_WINDOW = 5.0
+HOST_ALLOWLIST = ('127.0.0.1', 'localhost', '::1')
+JSON_CONTENT_TYPE_RE = re.compile(r'^application/json\s*(;|$)', re.IGNORECASE)
+WRITE_TOKEN_HEADER = 'X-RiftSense-Token'
+_WRITE_TOKEN = None
 
 _LCU_STATE = {
     'reachable': None,
@@ -61,6 +77,7 @@ _LCU_STATE = {
     'error': None,
     'checkedAt': None,
     'lastSnapshotAt': None,
+    'lastGameTime': None,
 }
 _LCU_LOCK = threading.Lock()
 
@@ -88,6 +105,8 @@ _PLAN_WRITE_LOCK = threading.Lock()
 SSL_CTX = ssl.create_default_context()
 SSL_CTX.check_hostname = False
 SSL_CTX.verify_mode = ssl.CERT_NONE
+
+PUBLIC_SSL_CTX = ssl.create_default_context()
 
 ASSETS = {
     'version': None,
@@ -117,6 +136,92 @@ def _num(v):
     return None
 
 
+def _finite(v):
+    number = _num(v)
+    if number is None:
+        return None
+    try:
+        return number if math.isfinite(float(number)) else None
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _optional_finite(obj, key):
+    if key not in obj:
+        return True
+    return _finite(obj.get(key)) is not None
+
+
+def validate_live_payload(data):
+    """Return an error string when the Live Client payload is not usable."""
+    if not isinstance(data, dict):
+        return 'root_not_object'
+    g = data.get('gameData')
+    if not isinstance(g, dict):
+        return 'game_data_missing'
+    if _finite(g.get('gameTime')) is None:
+        return 'game_time_invalid'
+    if not isinstance(g.get('gameMode'), str) or not g['gameMode'].strip():
+        return 'game_mode_invalid'
+    map_number = _finite(g.get('mapNumber'))
+    if map_number is None:
+        return 'map_number_invalid'
+    ap = data.get('activePlayer')
+    if not isinstance(ap, dict):
+        return 'active_player_missing'
+    if not _optional_finite(ap, 'currentGold'):
+        return 'current_gold_not_finite'
+    players = data.get('allPlayers')
+    if not isinstance(players, list) or not players:
+        return 'players_missing'
+    for player in players:
+        if not isinstance(player, dict):
+            return 'player_not_object'
+        champ = player.get('championName')
+        if not isinstance(champ, str) or not champ.strip():
+            return 'champion_name_invalid'
+        if 'team' not in player or player.get('team') in (None, ''):
+            return 'player_team_missing'
+        for key in ('level', 'kills', 'deaths', 'assists', 'creepScore'):
+            if not _optional_finite(player, key):
+                return 'player_%s_not_finite' % key
+        scores = player.get('scores')
+        if scores is not None:
+            if not isinstance(scores, dict):
+                return 'player_scores_invalid'
+            for key in ('kills', 'deaths', 'assists', 'creepScore'):
+                if not _optional_finite(scores, key):
+                    return 'player_score_%s_not_finite' % key
+        items = player.get('items')
+        if items is not None:
+            if not isinstance(items, list):
+                return 'player_items_invalid'
+            for item in items:
+                if item is None:
+                    continue
+                if not isinstance(item, dict):
+                    return 'player_item_not_object'
+                iid = item.get('itemID')
+                if iid is not None and (isinstance(iid, bool) or _finite(iid) is None):
+                    return 'player_item_id_invalid'
+    events = data.get('events')
+    if events is not None:
+        if not isinstance(events, dict):
+            return 'events_invalid'
+        raw = events.get('Events')
+        if raw is not None:
+            if not isinstance(raw, list):
+                return 'events_list_invalid'
+            for event in raw:
+                if event is None:
+                    continue
+                if not isinstance(event, dict):
+                    return 'event_not_object'
+                if not _optional_finite(event, 'EventTime'):
+                    return 'event_time_not_finite'
+    return None
+
+
 def _read_json(path):
     with open(path, 'r', encoding='utf-8-sig') as f:
         return json.load(f)
@@ -142,7 +247,7 @@ def _try_catalog(path, kind):
 
 def _fetch_latest_version():
     try:
-        with urllib.request.urlopen(VERSIONS_URL, timeout=15) as r:
+        with urllib.request.urlopen(VERSIONS_URL, context=PUBLIC_SSL_CTX, timeout=15) as r:
             versions = json.loads(r.read().decode('utf-8'))
         if isinstance(versions, list) and versions and isinstance(versions[0], str):
             return versions[0]
@@ -154,7 +259,7 @@ def _fetch_latest_version():
 def _download_asset(kind, path, version):
     url = CDN_URL % (version, kind)
     req = urllib.request.Request(url, headers={'User-Agent': 'RiftSense/1.0'})
-    with urllib.request.urlopen(req, context=SSL_CTX, timeout=60) as r:
+    with urllib.request.urlopen(req, context=PUBLIC_SSL_CTX, timeout=60) as r:
         payload = r.read()
     obj = json.loads(payload.decode('utf-8-sig'))
     _validate_catalog(obj, kind)
@@ -358,6 +463,19 @@ def lcu_health(seed=True):
     }
 
 
+def lcu_game_time(max_age=30.0):
+    with _LCU_LOCK:
+        state = dict(_LCU_STATE)
+    last = _num(state.get('lastSnapshotAt'))
+    game_time = _num(state.get('lastGameTime'))
+    if last is None or game_time is None:
+        return None
+    now = time.time()
+    if now - last > max_age:
+        return None
+    return game_time + max(0.0, now - last)
+
+
 def build_health():
     db = db_health()
     lcu = lcu_health()
@@ -412,12 +530,12 @@ def chain_of(iid):
 
 
 def find_item_id(name):
-    if not name or len(name) > 60:
+    if not name or len(name) > PLAN_ITEM_MAX:
         return None
     return (ITEM_NAMES.get(name.strip().lower()) or [None])[0]
 
 
-def _record_lcu(status, reachable, error=None, snapshot=False):
+def _record_lcu(status, reachable, error=None, snapshot=False, game_time=None):
     now = time.time()
     with _LCU_LOCK:
         _LCU_STATE['status'] = status
@@ -426,6 +544,7 @@ def _record_lcu(status, reachable, error=None, snapshot=False):
         _LCU_STATE['checkedAt'] = now
         if snapshot:
             _LCU_STATE['lastSnapshotAt'] = now
+            _LCU_STATE['lastGameTime'] = _num(game_time)
 
 
 def fetch_game():
@@ -438,7 +557,12 @@ def fetch_game():
         except Exception:
             _record_lcu('malformed_response', True, 'malformed_response')
             return None, 'malformed_response'
-        _record_lcu('live', True, None, snapshot=True)
+        invalid = validate_live_payload(data)
+        if invalid:
+            _record_lcu('invalid_payload', True, invalid)
+            return None, 'invalid_payload'
+        game_time = _num((data.get('gameData') or {}).get('gameTime'))
+        _record_lcu('live', True, None, snapshot=True, game_time=game_time)
         return data, None
     except urllib.error.HTTPError as ex:
         if ex.code == 404:
@@ -726,7 +850,7 @@ def epoch_lock():
             except OSError:
                 handle = None
                 locked = False
-            yield
+            yield locked
         finally:
             if handle is not None:
                 if locked:
@@ -764,7 +888,7 @@ def game_context(fetched=_UNSET):
         data, err = fetch_game()
     else:
         data, err = fetched
-    with epoch_lock():
+    with epoch_lock() as locked:
         stored = _read_stored_epoch()
         now = int(time.time() * 1000)
         if isinstance(data, dict) and isinstance(data.get('gameData'), dict):
@@ -788,6 +912,8 @@ def game_context(fetched=_UNSET):
                     rec = dict(stored)
                     rec['start'] = int(old_start)
                     rec['champ'] = champ or stored.get('champ')
+                    if not isinstance(rec.get('session'), str) or not rec.get('session'):
+                        rec['session'] = str(uuid.uuid4())
                 else:
                     rec = {'start': start, 'champ': champ, 'session': str(uuid.uuid4())}
                 rec.update({'observedAt': now, 'gameTime': game_time, 'end': now, 'source': 'live'})
@@ -798,7 +924,7 @@ def game_context(fetched=_UNSET):
                     or stored.get('champ') != rec.get('champ')
                     or abs(now - int(_num(stored.get('observedAt')) or 0)) >= 5000
                 )
-                if needs_write:
+                if needs_write and locked:
                     try:
                         _atomic_write_json(EPOCH_FILE, rec)
                     except OSError:
@@ -875,10 +1001,24 @@ def build_plan():
     }
 
 
-def build_plan_raw():
-    text, age, status = read_text_file(BUILD_FILE)
+def _revision_bytes(payload):
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _file_revision(path):
+    try:
+        with open(path, 'rb') as f:
+            return _revision_bytes(f.read())
+    except OSError:
+        return _revision_bytes(b'')
+
+
+def build_plan_raw(path=None):
+    path = BUILD_FILE if path is None else path
+    text, age, status = read_text_file(path)
+    revision = None if status == 'error' else _file_revision(path)
     return {'ok': status != 'error', 'status': status, 'text': text, 'age': age,
-            'backup': os.path.basename(BUILD_FILE) + '.bak',
+            'revision': revision, 'backup': os.path.basename(path) + '.bak',
             'limits': {'bytes': PLAN_MAX_BYTES, 'lines': PLAN_MAX_LINES}}
 
 
@@ -1006,25 +1146,32 @@ def _atomic_write_bytes(path, payload):
         raise
 
 
-def write_plan_text(text):
+def write_plan_text(text, expected_revision=None, path=None):
+    path = BUILD_FILE if path is None else path
     result = validate_plan_text(text)
     if not result.get('ok'):
         return result
     payload = result['text'].encode('utf-8')
     backup = None
     with _PLAN_WRITE_LOCK:
+        current_revision = _file_revision(path)
+        if expected_revision is not None and expected_revision != current_revision:
+            return {'ok': False, 'error': 'stale_revision',
+                    'revision': current_revision,
+                    'details': ['plan changed since it was loaded; reload before saving']}
         try:
-            if os.path.exists(BUILD_FILE):
-                with open(BUILD_FILE, 'rb') as f:
+            if os.path.exists(path):
+                with open(path, 'rb') as f:
                     original = f.read()
-                _atomic_write_bytes(BUILD_FILE + '.bak', original)
-                backup = os.path.basename(BUILD_FILE) + '.bak'
-            _atomic_write_bytes(BUILD_FILE, payload)
+                _atomic_write_bytes(path + '.bak', original)
+                backup = os.path.basename(path) + '.bak'
+            _atomic_write_bytes(path, payload)
         except OSError as ex:
             return {'ok': False, 'error': 'write_error', 'details': [str(ex)]}
     return {'ok': True, 'status': 'saved', 'bytes': len(payload),
             'lines': result['lines'], 'planLines': result['planLines'],
-            'backup': backup, 'savedAt': time.time()}
+            'backup': backup, 'savedAt': time.time(),
+            'revision': _revision_bytes(payload)}
 
 
 def _empty_slots():
@@ -1213,10 +1360,11 @@ def _death_text(value, limit):
     return str(value).strip()[:limit]
 
 
-def read_death_structured(now=None):
+def read_death_structured(now=None, path=None):
     now = time.time() if now is None else now
+    path = DEATH_META_FILE if path is None else path
     try:
-        st = os.stat(DEATH_META_FILE)
+        st = os.stat(path)
     except OSError:
         return None
     if st.st_size <= 0 or st.st_size > DEATH_STRUCTURED_MAX_BYTES:
@@ -1224,7 +1372,7 @@ def read_death_structured(now=None):
     if now - st.st_mtime > DEATH_STRUCTURED_TTL:
         return None
     try:
-        with open(DEATH_META_FILE, 'r', encoding='utf-8-sig', errors='replace') as f:
+        with open(path, 'r', encoding='utf-8-sig', errors='replace') as f:
             obj = json.load(f)
     except (OSError, ValueError):
         return None
@@ -1280,10 +1428,350 @@ def read_death_structured(now=None):
     }
 
 
+def _parse_iso_epoch(value):
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if text.endswith('Z') or text.endswith('z'):
+        text = text[:-1] + '+00:00'
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    try:
+        return parsed.timestamp()
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def read_death_report(text_path=None, meta_path=None, now=None, session_id=None,
+                      match_window=DEATH_MATCH_WINDOW):
+    now = time.time() if now is None else now
+    text_path = DEATH_FILE if text_path is None else text_path
+    meta_path = DEATH_META_FILE if meta_path is None else meta_path
+    text, age, status = read_text_file(text_path)
+    try:
+        structured = read_death_structured(now=now, path=meta_path)
+    except Exception:
+        structured = None
+    text_mtime = None
+    meta_mtime = None
+    try:
+        text_mtime = os.stat(text_path).st_mtime
+    except OSError:
+        pass
+    try:
+        meta_mtime = os.stat(meta_path).st_mtime
+    except OSError:
+        pass
+    mismatch = False
+    reason = None
+    structured_session = None
+    observed = None
+    if structured is not None:
+        structured_session = structured.get('sessionId')
+        observed = _parse_iso_epoch(structured.get('observedAt'))
+        if (text_mtime is not None and meta_mtime is not None
+                and abs(text_mtime - meta_mtime) > match_window):
+            mismatch = True
+            reason = 'text_meta_time_skew'
+            structured = None
+        elif session_id and structured_session and structured_session != session_id:
+            mismatch = True
+            reason = 'session_mismatch'
+            structured = None
+    if observed is None:
+        observed = meta_mtime if meta_mtime is not None else text_mtime
+    return {
+        'text': text,
+        'age': age,
+        'status': status,
+        'structured': structured,
+        'mismatch': mismatch,
+        'mismatchReason': reason,
+        'sessionId': structured_session if not mismatch else None,
+        'observedAtEpoch': observed,
+    }
+
+
+def _read_coach_envelope(path=None, now=None):
+    path = COACH_META_FILE if path is None else path
+    now = time.time() if now is None else now
+    result = {
+        'ok': False,
+        'fileStatus': 'missing',
+        'age': None,
+        'text': '',
+        'workerStatus': None,
+        'error': None,
+        'sessionId': None,
+        'seq': None,
+        'observedGameTime': None,
+        'completedAt': None,
+        'observedAtEpoch': None,
+    }
+    try:
+        st = os.stat(path)
+    except OSError:
+        return result
+    result['age'] = max(0.0, now - st.st_mtime)
+    if st.st_size <= 0 or st.st_size > COACH_META_MAX_BYTES:
+        result['fileStatus'] = 'error'
+        return result
+    try:
+        with open(path, 'r', encoding='utf-8-sig', errors='replace') as f:
+            obj = json.load(f)
+    except (OSError, ValueError):
+        result['fileStatus'] = 'error'
+        return result
+    if (not isinstance(obj, dict) or obj.get('schema') != 'riftsense.v1'
+            or obj.get('kind') != 'coach'):
+        result['fileStatus'] = 'invalid'
+        return result
+    worker = obj.get('status')
+    session = obj.get('session') if isinstance(obj.get('session'), str) else obj.get('sessionId')
+    seq = obj.get('seq')
+    observed_game_time = obj.get('observedGameTime')
+    if observed_game_time is None:
+        observed_game_time = obj.get('gameTime')
+    result.update({
+        'ok': True,
+        'fileStatus': 'ok',
+        'text': obj.get('text').strip() if isinstance(obj.get('text'), str) else '',
+        'workerStatus': worker if isinstance(worker, str) else None,
+        'error': _death_text(obj.get('error'), 500),
+        'sessionId': session if isinstance(session, str) and session else None,
+        'seq': seq if isinstance(seq, int) and not isinstance(seq, bool) else None,
+        'observedGameTime': _num(observed_game_time),
+        'completedAt': _parse_iso_epoch(obj.get('completedAt')),
+    })
+    observed = _parse_iso_epoch(obj.get('observedAt')) or result['completedAt']
+    if observed is None and result['age'] is not None:
+        observed = now - result['age']
+    result['observedAtEpoch'] = observed
+    return result
+
+
+def build_coach(now=None, path=None, text_path=None, current_session=None,
+                live_game_time=None, ttl=None):
+    now = time.time() if now is None else now
+    ttl = ACTION_TTL['coach'] if ttl is None else ttl
+    env = _read_coach_envelope(path=path, now=now)
+    text, text_age, text_status = read_text_file(COACH_FILE if text_path is None else text_path)
+    chosen = env['text'] or text
+    worker_status = env['workerStatus']
+    if live_game_time is None:
+        live_game_time = lcu_game_time()
+    source_age = None
+    if live_game_time is not None and env['observedGameTime'] is not None:
+        source_age = max(0.0, float(live_game_time) - float(env['observedGameTime']))
+    fresh = False
+    stale_reason = None
+    if not chosen:
+        stale_reason = 'no_text'
+    elif worker_status is None:
+        stale_reason = 'worker_unknown'
+    elif worker_status != 'ok':
+        stale_reason = 'worker_%s' % worker_status
+    elif current_session and env['sessionId'] and env['sessionId'] != current_session:
+        stale_reason = 'session_mismatch'
+    elif source_age is not None and source_age > ttl:
+        stale_reason = 'source_expired'
+    else:
+        age = env['age'] if env['age'] is not None else text_age
+        if age is None:
+            stale_reason = 'age_unknown'
+        elif age > ttl:
+            stale_reason = 'expired'
+        else:
+            fresh = True
+    if chosen:
+        status = 'unstable' if text_status == 'unstable' else 'ok'
+    elif text_status == 'error' or env['fileStatus'] == 'error':
+        status = 'error'
+    else:
+        status = 'missing'
+    return {
+        'ok': bool(chosen),
+        'status': status,
+        'text': chosen,
+        'age': text_age if text_age is not None else env['age'],
+        'fresh': fresh,
+        'staleReason': stale_reason,
+        'worker': {
+            'status': worker_status or 'unknown',
+            'error': env['error'],
+            'seq': env['seq'],
+            'completedAt': env['completedAt'],
+            'ageSec': env['age'],
+        },
+        'sessionId': env['sessionId'],
+        'observedAt': env['observedAtEpoch'],
+        'sourceAgeSec': source_age,
+        'expiresAt': (env['observedAtEpoch'] + ttl) if (fresh and env['observedAtEpoch']) else None,
+        'ttlSec': ttl,
+    }
+
+
+def _action_text(text, limit=ACTION_TEXT_MAX):
+    if not isinstance(text, str):
+        return ''
+    return text.strip()[:limit]
+
+
+def _current_session():
+    try:
+        game = timeline.current().get('game') or {}
+    except Exception:
+        game = {}
+    session = game.get('session_id')
+    if isinstance(session, str) and session:
+        return session
+    return None
+
+
+def _death_action(now, session_id):
+    report = read_death_report(now=now, session_id=session_id)
+    structured = report.get('structured')
+    pending = False
+    text = ''
+    if structured:
+        text = _action_text(structured.get('doNow') or structured.get('now') or '')
+        if not text:
+            text = _action_text(report.get('text') or '')
+    else:
+        raw = (report.get('text') or '').strip()
+        match = re.match(r'^PENDING\|([^|]{0,32})\|([^|\r\n]{0,120})', raw)
+        if match:
+            pending = True
+            label = match.group(2).strip()
+            text = 'Death at %s to %s - analyzing' % (match.group(1).strip(), label)
+        elif not report.get('mismatch'):
+            text = _action_text(raw)
+    if not text:
+        return None
+    observed = report.get('observedAtEpoch')
+    if pending or observed is None:
+        observed = now - (report.get('age') or 0)
+    return {'kind': 'death', 'text': text, 'observedAt': observed,
+            'sessionId': report.get('sessionId') or session_id,
+            'source': 'death', 'pending': pending}
+
+
+def _coach_action(now, session_id):
+    coach = build_coach(now=now, current_session=session_id)
+    if not coach.get('fresh'):
+        return None
+    text = _action_text(coach.get('text'))
+    if not text:
+        return None
+    if coach.get('sourceAgeSec') is not None:
+        observed = now - float(coach['sourceAgeSec'])
+    else:
+        observed = coach.get('observedAt')
+    if observed is None:
+        observed = now - (coach.get('age') or 0)
+    return {'kind': 'coach', 'text': text, 'observedAt': observed,
+            'sessionId': coach.get('sessionId') or session_id, 'source': 'coach'}
+
+
+def _objective_action(now, session_id):
+    try:
+        game = timeline.current().get('game') or {}
+        if not game:
+            return None
+        if session_id and game.get('session_id') and game['session_id'] != session_id:
+            return None
+        events = timeline.latest_events(('objective',), game_id=game.get('id'), limit=5)
+    except Exception:
+        return None
+    cutoff = now - ACTION_TTL['objective']
+    for event in events:
+        at_ms = _num(event.get('at_ts'))
+        if at_ms is None:
+            continue
+        observed = at_ms / 1000.0
+        if observed < cutoff or observed > now + 5:
+            continue
+        text = _action_text(event.get('label') or '')
+        if not text:
+            continue
+        return {'kind': 'objective', 'text': text, 'observedAt': observed,
+                'sessionId': session_id, 'source': 'timeline'}
+    return None
+
+
+def select_action(candidates, now=None):
+    now = time.time() if now is None else now
+    eligible = []
+    expired = False
+    for item in candidates or []:
+        if not isinstance(item, dict):
+            continue
+        kind = item.get('kind')
+        text = _action_text(item.get('text'))
+        observed = _num(item.get('observedAt'))
+        if not kind or not text or observed is None:
+            continue
+        ttl = float(ACTION_TTL.get(kind, 60.0))
+        expires_at = observed + ttl
+        if expires_at <= now:
+            expired = True
+            continue
+        eligible.append({
+            'kind': kind,
+            'text': text,
+            'priority': ACTION_PRIORITY.get(kind, 0),
+            'sessionId': item.get('sessionId'),
+            'observedAt': observed,
+            'ageSec': round(max(0.0, now - observed), 3),
+            'expiresAt': expires_at,
+            'source': item.get('source') or kind,
+        })
+    if not eligible:
+        return None, expired
+    eligible.sort(key=lambda action: (-action['priority'], action['ageSec'], action['kind']))
+    return eligible[0], expired
+
+
+def build_action(now=None, session_id=_UNSET):
+    now = time.time() if now is None else now
+    if session_id is _UNSET:
+        session_id = _current_session()
+    candidates = []
+    for source in (_death_action, _coach_action, _objective_action):
+        try:
+            item = source(now, session_id)
+        except Exception:
+            item = None
+        if not item:
+            continue
+        if session_id and item.get('sessionId') and item['sessionId'] != session_id:
+            continue
+        candidates.append(item)
+    action, expired = select_action(candidates, now)
+    status = 'ok' if action else ('expired' if expired else 'no_action')
+    return {
+        'ok': True,
+        'action': action,
+        'status': status,
+        'now': now,
+        'sessionId': (action or {}).get('sessionId') or session_id,
+        'ttl': dict(ACTION_TTL),
+        'priorities': dict(ACTION_PRIORITY),
+    }
+
+
 def ingest_event(payload):
     kind = str(payload.get('kind') or '').strip()
     session_id = payload.get('sessionId') or payload.get('session_id')
     t_game = payload.get('tGame', payload.get('gameTime'))
+    data = payload.get('data')
+    data = data if isinstance(data, dict) else {}
     if kind == 'advice':
         text = str(payload.get('text') or '').strip()
         if not text:
@@ -1292,14 +1780,29 @@ def ingest_event(payload):
                                       t_game=t_game, session_id=session_id,
                                       meta=payload.get('meta'))
     if kind == 'inference':
+        reason = payload.get('reason') or data.get('reason') or data.get('error')
         return timeline.record_inference(payload.get('requestId') or '',
                                          status=payload.get('status') or 'started',
                                          t_game=t_game, session_id=session_id,
                                          started_at=payload.get('startedAt'),
                                          finished_at=payload.get('finishedAt'),
-                                         tokens_in=payload.get('tokensIn') or 0,
-                                         tokens_out=payload.get('tokensOut') or 0,
-                                         cost=payload.get('cost') or 0.0)
+                                         tokens_in=payload.get('tokensIn'),
+                                         tokens_out=payload.get('tokensOut'),
+                                         cost=payload.get('cost'),
+                                         reason=reason)
+    if kind in timeline.COVERAGE_KINDS or kind == 'coverage':
+        raw_action = payload.get('action') or data.get('action')
+        if kind == 'coverage' and not raw_action:
+            raise ValueError('coverage action required')
+        if str(raw_action or '').strip().lower() in ('stop', 'coverage_stop', 'end'):
+            action = 'stop'
+        else:
+            action = 'start'
+        return timeline.record_coverage(
+            action, session_id=session_id,
+            at=payload.get('at') or payload.get('timestamp') or data.get('at'),
+            source=payload.get('source') or 'producer',
+            payload=data or None)
     if not kind:
         raise ValueError('kind required')
     return timeline.record_event(kind, label=payload.get('label'), payload=payload.get('data'),
@@ -1340,6 +1843,84 @@ def build_trends():
         return {'ok': False, 'status': 'trends_error',
                 'error': type(ex).__name__, 'message': str(ex),
                 'unavailable': ['all']}
+
+
+def _host_only(value):
+    if not isinstance(value, str):
+        return ''
+    text = value.strip().lower()
+    if text.startswith('['):
+        end = text.find(']')
+        return text[1:end] if end > 0 else text
+    return text.split(':', 1)[0]
+
+
+def host_allowed(host_header, allowlist=HOST_ALLOWLIST):
+    return _host_only(host_header) in allowlist
+
+
+def origin_allowed(origin, port=None, allowlist=HOST_ALLOWLIST):
+    if not isinstance(origin, str) or not origin.strip():
+        return False
+    port = PORT if port is None else port
+    try:
+        parsed = urllib.parse.urlparse(origin.strip())
+    except ValueError:
+        return False
+    if parsed.scheme not in ('http', 'https'):
+        return False
+    host = parsed.hostname
+    if not host or host.lower() not in allowlist:
+        return False
+    try:
+        origin_port = parsed.port
+    except ValueError:
+        return False
+    if origin_port is not None and origin_port != port:
+        return False
+    return True
+
+
+def content_type_ok(value):
+    if not isinstance(value, str) or not value.strip():
+        return False
+    return bool(JSON_CONTENT_TYPE_RE.match(value.strip()))
+
+
+def valid_token(provided, expected):
+    if not isinstance(provided, str) or not isinstance(expected, str) or not expected:
+        return False
+    return secrets.compare_digest(provided, expected)
+
+
+def check_write_request(headers, token=None, port=None):
+    token = _WRITE_TOKEN if token is None else token
+    port = PORT if port is None else port
+    if not host_allowed(headers.get('Host')):
+        return {'code': 403, 'error': 'forbidden_host',
+                'message': 'Host must be a loopback address'}
+    if not content_type_ok(headers.get('Content-Type')):
+        return {'code': 415, 'error': 'unsupported_media_type',
+                'message': 'Content-Type must be application/json'}
+    origin = headers.get('Origin')
+    if origin:
+        if not origin_allowed(origin, port=port):
+            return {'code': 403, 'error': 'forbidden_origin',
+                    'message': 'Origin must be a loopback RiftSense origin'}
+        if not valid_token(headers.get(WRITE_TOKEN_HEADER), token):
+            return {'code': 403, 'error': 'bad_token',
+                    'message': 'missing or invalid %s header' % WRITE_TOKEN_HEADER}
+    return None
+
+
+def _init_write_token(path=None):
+    path = TOKEN_FILE if path is None else path
+    token = secrets.token_urlsafe(32)
+    try:
+        _atomic_write_bytes(path, token.encode('utf-8'))
+    except OSError:
+        pass
+    return token
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -1387,17 +1968,32 @@ class Handler(http.server.BaseHTTPRequestHandler):
             state = build_state()
             self._send(state, code=503 if state.get('status') == 'api_error' else 200)
         elif path == '/api/coach':
-            text, age, status = read_text_file(COACH_FILE)
-            self._send({'text': text, 'age': age, 'status': status},
-                       code=500 if status == 'error' else 200)
+            coach = build_coach()
+            self._send(coach, code=500 if coach.get('status') == 'error' else 200)
         elif path == '/api/death':
-            text, age, status = read_text_file(DEATH_FILE)
+            report = read_death_report()
+            self._send(report, code=500 if report.get('status') == 'error' else 200)
+        elif path == '/api/action':
+            self._send(build_action())
+        elif path == '/api/coverage':
+            query = urllib.parse.parse_qs(self.path.split('?', 1)[1]) if '?' in self.path else {}
+            session = (query.get('sessionId') or [None])[0]
+            game_id = None
+            raw_game = (query.get('gameId') or [None])[0]
+            if raw_game:
+                try:
+                    game_id = int(raw_game)
+                except (TypeError, ValueError):
+                    game_id = None
             try:
-                structured = read_death_structured()
-            except Exception:
-                structured = None
-            self._send({'text': text, 'age': age, 'status': status, 'structured': structured},
-                       code=500 if status == 'error' else 200)
+                self._send(timeline.coverage(session_id=session, game_id=game_id))
+            except Exception as ex:
+                self._send({'ok': False, 'status': 'coverage_error',
+                            'error': type(ex).__name__, 'message': str(ex)}, code=503)
+        elif path == '/api/token':
+            self._send({'ok': True, 'token': _WRITE_TOKEN,
+                        'header': WRITE_TOKEN_HEADER,
+                        'requiredWithOrigin': True})
         elif path == '/api/cost':
             cost = build_cost()
             self._send(cost, code=503 if cost.get('status') in ('db_error', 'schema_error') else 200)
@@ -1470,6 +2066,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = self.path.split('?', 1)[0].rstrip('/')
+        if path not in ('/api/plan/edit', '/api/events'):
+            self._send({'ok': False, 'error': 'not_found'}, code=404)
+            return
+        denial = check_write_request(self.headers)
+        if denial:
+            self._send({'ok': False, 'error': denial['error'],
+                        'message': denial['message']}, code=denial['code'])
+            return
         if path == '/api/plan/edit':
             try:
                 payload = self._read_json_body(PLAN_MAX_BYTES)
@@ -1478,8 +2082,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._send({'ok': False, 'error': 'invalid_body',
                             'message': str(ex)}, code=400)
                 return
+            revision = payload.get('revision')
+            if revision is not None and not isinstance(revision, str):
+                self._send({'ok': False, 'error': 'invalid_body',
+                            'message': 'revision must be a string'}, code=400)
+                return
             try:
-                result = write_plan_text(text)
+                result = write_plan_text(text, expected_revision=revision)
             except Exception as ex:
                 self._send({'ok': False, 'error': 'write_error',
                             'message': str(ex)}, code=500)
@@ -1488,14 +2097,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 code = 200
             elif result.get('error') == 'write_error':
                 code = 500
+            elif result.get('error') == 'stale_revision':
+                code = 409
             else:
                 code = 400
             self._send(result, code=code)
             return
         try:
-            if path != '/api/events':
-                self._send({'ok': False, 'error': 'not_found'}, code=404)
-                return
             payload = self._read_json_body(65536)
             self._send(ingest_event(payload))
         except Exception as ex:
@@ -1505,6 +2113,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass
 
 
+_WRITE_TOKEN = _init_write_token()
 refresh_asset_state()
 
 
