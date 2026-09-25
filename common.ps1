@@ -1,4 +1,3 @@
-[System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
 try { [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12 } catch {}
 
 $script:SpellMap = @{
@@ -49,9 +48,18 @@ function Get-LcuLockfile {
     }
     $lf = $candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
     if (-not $lf) { return $null }
-    $parts = (Get-Content -LiteralPath $lf -Raw).Trim() -split ':'
-    if ($parts.Count -lt 4) { return $null }
-    return [pscustomobject]@{ Path = $lf; Port = $parts[2]; Password = $parts[3]; Protocol = $parts[4] }
+    $raw = ''
+    try { $raw = (Get-Content -LiteralPath $lf -Raw -Encoding UTF8 -ErrorAction Stop).Trim() } catch { return $null }
+    if (-not $raw) { return $null }
+    $parts = $raw -split ':'
+    if ($parts.Count -ne 5) { return $null }
+    $port = 0
+    if (-not [int]::TryParse("$($parts[2])".Trim(), [ref]$port)) { return $null }
+    if ($port -lt 1 -or $port -gt 65535) { return $null }
+    $protocol = "$($parts[4])".Trim().ToLowerInvariant()
+    if (($protocol -ne 'http') -and ($protocol -ne 'https')) { return $null }
+    if (-not "$($parts[3])") { return $null }
+    return [pscustomobject]@{ Path = $lf; Port = $port; Password = "$($parts[3])"; Protocol = $protocol }
 }
 
 function Invoke-LcuApi {
@@ -61,10 +69,19 @@ function Invoke-LcuApi {
     )
     $uri = '{0}://127.0.0.1:{1}{2}' -f $Lock.Protocol, $Lock.Port, $ApiPath
     $tmp = Join-Path $env:TEMP ("lcu_" + [guid]::NewGuid().ToString('N') + ".json")
-    $code = curl.exe -k -s -u "riot:$($Lock.Password)" -o $tmp -w '%{http_code}' --max-time 15 $uri
+    $netrc = Join-Path $env:TEMP ("lcu_netrc_" + [guid]::NewGuid().ToString('N') + ".txt")
     $raw = ''
-    if (Test-Path -LiteralPath $tmp) {
-        $raw = Get-Content -LiteralPath $tmp -Raw -Encoding UTF8
+    $code = '000'
+    try {
+        Set-Content -LiteralPath $netrc -Value ("machine 127.0.0.1 login riot password {0}" -f $Lock.Password) -Encoding ASCII
+        if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+        $code = curl.exe -k -s --netrc-file $netrc -o $tmp -w '%{http_code}' --max-time 15 $uri
+        $curlExit = $LASTEXITCODE
+        if ($curlExit -eq 0 -and $code -eq '200' -and (Test-Path -LiteralPath $tmp)) {
+            $raw = Get-Content -LiteralPath $tmp -Raw -Encoding UTF8
+        }
+    } finally {
+        Remove-Item -LiteralPath $netrc -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
     }
     if ($code -ne '200') { throw "LCU HTTP $code for $ApiPath" }
@@ -72,18 +89,42 @@ function Invoke-LcuApi {
     return ($raw | ConvertFrom-Json)
 }
 
+function Update-DdragonAsset {
+    param(
+        [Parameter(Mandatory = $true)][string[]]$Names,
+        [switch]$Force
+    )
+    $todo = @()
+    foreach ($name in $Names) {
+        $dest = Join-Path $PSScriptRoot ($name + '.json')
+        if ($Force -or -not (Test-Path -LiteralPath $dest)) { $todo += $name }
+    }
+    if (-not $todo) { return }
+    $ver = $null
+    try { $ver = (Invoke-RestMethod -Uri 'https://ddragon.leagueoflegends.com/api/versions.json' -TimeoutSec 20)[0] } catch { return }
+    if (-not $ver) { return }
+    foreach ($name in $todo) {
+        $dest = Join-Path $PSScriptRoot ($name + '.json')
+        $tmp = Join-Path $env:TEMP ("riftsense_" + $name + "_" + [guid]::NewGuid().ToString('N') + ".json")
+        try {
+            Invoke-WebRequest -Uri ("https://ddragon.leagueoflegends.com/cdn/{0}/data/en_US/{1}.json" -f $ver, $name) -OutFile $tmp -TimeoutSec 60 -UseBasicParsing -ErrorAction Stop
+            if ((Test-Path -LiteralPath $tmp) -and ((Get-Item -LiteralPath $tmp).Length -gt 0)) {
+                Move-Item -LiteralPath $tmp -Destination $dest -Force -ErrorAction Stop
+            }
+        } catch { }
+        if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+    }
+}
+
 function Get-ChampMap {
     $cache = Join-Path $PSScriptRoot 'champion.json'
     $needDownload = $true
     if (Test-Path -LiteralPath $cache) {
-        if ((Get-Item -LiteralPath $cache).LastWriteTime -gt (Get-Date).AddDays(-14)) { $needDownload = $false }
-    }
-    if ($needDownload) {
         try {
-            $vers = Invoke-RestMethod -Uri 'https://ddragon.leagueoflegends.com/api/versions.json' -TimeoutSec 20
-            Invoke-WebRequest -Uri "https://ddragon.leagueoflegends.com/cdn/$($vers[0])/data/en_US/champion.json" -OutFile $cache -TimeoutSec 60 -UseBasicParsing
+            if ((Get-Item -LiteralPath $cache).LastWriteTime -gt (Get-Date).AddDays(-14)) { $needDownload = $false }
         } catch { }
     }
+    if ($needDownload) { Update-DdragonAsset -Names @('champion') -Force }
     if (-not (Test-Path -LiteralPath $cache)) { return $null }
     try {
         $json = Get-Content -LiteralPath $cache -Raw | ConvertFrom-Json
