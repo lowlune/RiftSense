@@ -1,4 +1,4 @@
-PLAN[Nunu & Willump]: Haunting Guise -> Liandry's Torment -> Rylai's Crystal Scepter -> Zhonya's Hourglass -> Abyssal Mask
+PLAN[Nunu & Willump]: Haunting Guise -> Liandry's Torment -> Zhonya's Hourglass -> Abyssal Mask
 PLAN[Warwick]: Blade of The Ruined King -> Plated Steelcaps -> Thornmail -> Kaenic Rookern -> Sterak's Gage
 PLAN[Volibear]: Rod of Ages -> Fimbulwinter -> Spirit Visage -> Kaenic Rookern -> Sterak's Gage
 PLAN[Kayn]: Profane Hydra -> Black Cleaver -> Sterak's Gage -> Guardian Angel -> situational bruiser
@@ -6,8 +6,10 @@ PLAN[Nocturne]: Stridebreaker -> Black Cleaver -> Sterak's Gage -> Guardian Ange
 PLAN[default]: continue the build path the player is already on; suggest the strongest next item for their champion and this game
 
 Notes for the coach:
+- Plan syntax: PLAN[Champion]: Item -> Item ... at the start of the line (no leading spaces). The UI parser also tolerates a legacy PLAN: ... default line, but the PowerShell path does not; keep using PLAN[Champion] for champions.
 - Always use the PLAN line for the champion the player is actually playing (given in the game data), never another champion's plan.
 - Boots priority: Plated Steelcaps vs heavy AD, Mercury's Treads vs heavy CC.
 - Every purchase suggestion must include a short "because ..." reason, a next target for surplus gold, and one trap purchase to avoid.
 - Do not push a different build path unless the current one is clearly wrong for the matchup; if you deviate, say why in one clause.
-- Keep the champion's PLAN line (that line only) updated if the recommended path truly changes.
+- Nunu: Rylai's Crystal Scepter is situational, not a default. Swap it in for Zhonya's/Abyssal only when you need the 30% slow to keep targets inside W/E/R; otherwise skip it.
+- If the recommended path truly changes, propose the change in one clause. The user applies it to this file - the agent cannot write files.
