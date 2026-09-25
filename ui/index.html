@@ -346,6 +346,15 @@
   .healthbig .hrow { display: flex; gap: 6px; align-items: baseline; }
   .healthbig .hrow b { color: var(--text); font-weight: 600; min-width: 74px; }
 
+  .updatebanner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border: 1px solid rgba(200,170,110,.35); background: linear-gradient(180deg, #131F30, #0C1624); border-radius: 10px; padding: 7px 11px; font-size: 12.5px; color: var(--text); }
+  .updatebanner .ubtxt { flex: 1 1 auto; min-width: 190px; line-height: 1.4; }
+  .updatebanner .ubver { color: var(--gold); font-family: "Cascadia Mono", Consolas, monospace; font-weight: 700; }
+  .updatebanner .mbtn { min-height: 26px; }
+  .setupcard select.updatesel { background: #08101c; color: var(--text); border: 1px solid rgba(255,255,255,.14); border-radius: 7px; min-height: 26px; padding: 2px 6px; font-size: 12px; }
+  .setupcard .checkrow { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); }
+  .setupcard .checkrow input { accent-color: var(--gold); }
+  .updatecard .healthbig .hrow b { min-width: 84px; }
+
   .modal { position: fixed; inset: 0; background: rgba(2,6,12,.74); display: none; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
   .modal.show { display: flex; }
   .modalbox { width: min(780px, 96vw); max-height: 88vh; display: flex; flex-direction: column; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; box-shadow: 0 18px 50px rgba(0,0,0,.55); }
@@ -418,6 +427,11 @@
 </head>
 <body>
 <div class="shell">
+  <div class="updatebanner" id="updateBanner" role="status" hidden>
+    <span class="ubtxt"><i class="ph-fill ph-arrow-circle-up"></i> <span class="ubver" id="updateBannerVer">Update</span><span id="updateBannerText"> is available.</span></span>
+    <button class="mbtn" id="updateBannerLater" title="remind me later">Later</button>
+    <button class="mbtn primary" id="updateBannerInstall" title="download and install the update">Install</button>
+  </div>
   <div class="topbar">
     <div id="clock">--:--</div>
     <div class="livepill"><i class="ph-fill ph-broadcast st-wait" id="statIcon"></i><span id="statusText">connecting</span><span class="pill-age" id="gameAge"></span></div>
@@ -586,6 +600,25 @@
         </div>
         <p class="note">Overlay is read-only and consumes the same action stream. Nothing leaves your machine; inference cost is shown in status details.</p>
       </section>
+
+      <section class="setupcard updatecard" aria-labelledby="setupUpdatesTitle">
+        <h2 id="setupUpdatesTitle"><i class="ph-fill ph-arrow-clockwise"></i>Updates</h2>
+        <div class="healthbig">
+          <div class="hrow"><b>current</b><span id="updateCurrent" class="statusline">checking…</span></div>
+          <div class="hrow"><b>channel</b><select id="updateChannel" class="updatesel" aria-label="update channel"><option value="stable">stable</option><option value="beta">beta</option></select></div>
+          <div class="hrow"><b>auto-check</b><label class="checkrow"><input type="checkbox" id="updateAutoCheck" checked> check when idle</label></div>
+        </div>
+        <div class="btnrow">
+          <button class="mbtn" id="updateCheckBtn" title="check GitHub releases now">Check now</button>
+          <button class="mbtn primary" id="updateDownloadBtn" hidden title="download and verify the update">Download update</button>
+          <button class="mbtn primary" id="updateApplyBtn" hidden title="install the downloaded update and restart">Install &amp; restart</button>
+        </div>
+        <div class="statusline" id="updateStatus" role="status" aria-live="polite">checking…</div>
+        <p class="note" id="updateNote" hidden></p>
+        <p class="note" id="updateManagedNote" hidden>Installed with a package manager. Update through that package manager instead of the in-app installer.</p>
+        <button class="disclosure" id="updateNotesToggle" aria-expanded="false" aria-controls="updateNotes" hidden>release notes</button>
+        <div class="ppdetails" id="updateNotes" hidden></div>
+      </section>
     </div>
   </main>
 </div>
@@ -674,6 +707,12 @@ let planDirty = false;
 let planLoadError = '';
 let lastPlanOpener = null;
 let wasInGame = false;
+let appVersion = '';
+let updateInfo = null;
+let updateEndpointsAvailable = null;
+let updateBusy = false;
+let updateDismissedVersion = '';
+const updatePrefs = loadUpdatePrefs();
 
 const OBJECTIVES = ['dragon soul', 'elder dragon', 'rift herald', 'voidgrubs', 'rift scuttler', 'scuttle crab', 'blue buff', 'red buff', 'inhibitor', 'dragon', 'baron', 'herald', 'grubs', 'scuttle', 'elder', 'soul', 'turret', 'turrets', 'plates', 'raptors', 'wolves', 'gromp', 'krugs'];
 
@@ -2017,6 +2056,7 @@ function renderIdle(kind, msg){
   document.querySelector('.teams').style.display = 'none';
   document.querySelector('.shell').classList.remove('stale');
   renderReview();
+  renderUpdateBanner();
   updateHealthUI(true);
 }
 
@@ -2060,6 +2100,7 @@ function render(s){
   if (!teams.resolved) setStatus('wait', 'live · ' + mode + ' · identity unresolved');
   else setStatus('live', 'live · ' + mode);
   renderReview();
+  renderUpdateBanner();
 }
 
 function handleGame(j){
@@ -2862,12 +2903,276 @@ async function pollVersion(){
     const r = await fetchJson('/api/version', 6000);
     const j = r.json;
     if (!isObj(j)) { updateHealthUI(true); return; }
+    const appRaw = typeof j.app === 'string' ? j.app.trim() : '';
+    if (validVersion(appRaw)) { appVersion = appRaw; renderUpdate(); }
     const canonical = validVersion(j.version) ? j.version : (validVersion(j.championVersion) ? j.championVersion : null);
     if (canonical) { versionResolved = true; setCdnVersion(canonical); }
     else if (!versionResolved && validVersion(j.assetVersion)) setCdnVersion(j.assetVersion);
     updateHealthUI(true);
   } catch (e) {}
 }
+
+function loadUpdatePrefs(){
+  let channel = 'stable';
+  let auto = true;
+  try {
+    const c = localStorage.getItem('riftsenseUpdateChannel');
+    if (c === 'beta' || c === 'stable') channel = c;
+    if (localStorage.getItem('riftsenseUpdateAutoCheck') === '0') auto = false;
+  } catch (e) {}
+  return { channel: channel, auto: auto };
+}
+function saveUpdatePrefs(){
+  try {
+    localStorage.setItem('riftsenseUpdateChannel', updatePrefs.channel);
+    localStorage.setItem('riftsenseUpdateAutoCheck', updatePrefs.auto ? '1' : '0');
+  } catch (e) {}
+}
+function updateStateIs(info, names){
+  const s = String((info && info.status) || '').toLowerCase();
+  return names.indexOf(s) !== -1;
+}
+function updateIsReady(info){
+  if (!isObj(info)) return false;
+  if (typeof info.staged === 'string' && info.staged) return true;
+  if (isObj(info.staged)) return true;
+  return updateStateIs(info, ['ready', 'staged', 'downloaded']);
+}
+function updateIsAvailable(info){
+  if (!isObj(info)) return false;
+  if (updateStateIs(info, ['update_available', 'available'])) return true;
+  if (updateIsReady(info)) return false;
+  const s = String(info.status || '').toLowerCase();
+  if (s === '' || s === 'idle' || s === 'unknown') {
+    const latest = typeof info.latest === 'string' ? info.latest.trim() : '';
+    const current = typeof info.current === 'string' ? info.current.trim() : (appVersion || '');
+    return validVersion(latest) && validVersion(current) && latest !== current;
+  }
+  return false;
+}
+function updateIsManaged(info){
+  if (!isObj(info)) return false;
+  if (typeof info.managed === 'string' && info.managed) return true;
+  if (isObj(info.managed)) return true;
+  return updateStateIs(info, ['unsupported']);
+}
+function updateManagedName(info){
+  if (!isObj(info) || !info.managed) return 'package manager';
+  if (typeof info.managed === 'string') return info.managed;
+  if (isObj(info.managed)) return String(info.managed.type || info.managed.name || info.managed.manager || 'package manager');
+  return 'package manager';
+}
+function updateProgressPct(info){
+  if (!isObj(info)) return null;
+  const direct = num(info.progress);
+  if (direct != null && direct >= 0 && direct <= 1) return Math.round(direct * 100);
+  if (isObj(info.progress)) {
+    const rec = num(info.progress.received), tot = num(info.progress.total);
+    if (rec != null && tot != null && tot > 0) return Math.round((rec / tot) * 100);
+  }
+  const rec2 = num(info.received), tot2 = (isObj(info.asset) ? num(info.asset.size) : null);
+  if (rec2 != null && tot2 != null && tot2 > 0) return Math.round((rec2 / tot2) * 100);
+  return null;
+}
+function updateStatusLine(info){
+  if (updateEndpointsAvailable === false) return { text: 'updates unavailable in this build (server has no update API)', cls: 'warn' };
+  if (!isObj(info)) return { text: 'checking\u2026', cls: '' };
+  if (updateIsManaged(info)) return { text: 'installed via ' + updateManagedName(info) + ' \u2014 use that package manager instead of the in-app installer', cls: 'warn' };
+  const s = String(info.status || '').toLowerCase();
+  const cur = (typeof info.current === 'string' && info.current) ? info.current : (appVersion || '');
+  const latest = typeof info.latest === 'string' ? info.latest : '';
+  const err = (typeof info.error === 'string' && info.error) ? info.error : ((typeof info.message === 'string') ? info.message : '');
+  if (s === 'checking') return { text: 'checking for updates\u2026', cls: '' };
+  if (updateIsAvailable(info)) {
+    let size = '';
+    if (isObj(info.asset) && num(info.asset.size) != null) size = ' \u2014 ' + Math.max(1, Math.round(num(info.asset.size) / 1024)) + ' KB';
+    return { text: 'v' + (latest || '?') + ' available (you have ' + (cur ? 'v' + cur : '?') + ')' + size, cls: 'ok' };
+  }
+  if (updateIsReady(info)) return { text: 'v' + (latest || '') + ' downloaded and verified \u2014 ready to install', cls: 'ok' };
+  if (s === 'downloading') {
+    const pct = updateProgressPct(info);
+    return { text: 'downloading' + (pct != null ? ' ' + pct + '%' : '') + '\u2026', cls: '' };
+  }
+  if (s === 'restart_required' || s === 'restart-required' || s === 'applying' || s === 'applied') return { text: 'restart required to finish the update', cls: 'warn' };
+  if (s === 'up_to_date' || s === 'up-to-date' || s === 'uptodate') return { text: 'up to date' + (cur ? ' (v' + cur + ')' : ''), cls: 'ok' };
+  if (s === 'check_failed' || s === 'failed' || s === 'error' || s === 'download_failed' || info.ok === false) return { text: 'update failed' + (err ? ': ' + err : ''), cls: 'err' };
+  if (s === 'offline' || s === 'unavailable') return { text: 'update status unavailable (offline)', cls: 'warn' };
+  return { text: (s ? 'update status: ' + s : 'update status unknown') + (err ? ': ' + err : ''), cls: '' };
+}
+function renderUpdateBanner(){
+  const el = document.getElementById('updateBanner');
+  if (!el) return;
+  const inGame = !!(state && state.inGame);
+  const info = updateInfo;
+  const managed = updateIsManaged(info);
+  const ready = updateIsReady(info);
+  const available = updateIsAvailable(info);
+  const ver = (isObj(info) && typeof info.latest === 'string') ? info.latest : '';
+  let show = updateEndpointsAvailable !== false && !managed && !inGame && gameStatus !== 'connecting' && (available || ready);
+  if (show && updateDismissedVersion && updateDismissedVersion === ver) show = false;
+  el.hidden = !show;
+  if (!show) return;
+  const verEl = document.getElementById('updateBannerVer');
+  if (verEl) verEl.textContent = ver ? ('v' + ver) : 'An update';
+  const txtEl = document.getElementById('updateBannerText');
+  if (txtEl) txtEl.textContent = ready ? ' is downloaded and verified \u2014 install when ready.' : ' is available \u2014 install before your next match.';
+}
+function renderUpdate(){
+  const statusEl = document.getElementById('updateStatus');
+  if (!statusEl) return;
+  const info = updateInfo;
+  const inGame = !!(state && state.inGame);
+  const managed = updateIsManaged(info);
+  const ready = updateIsReady(info);
+  const available = updateIsAvailable(info);
+  const cur = (isObj(info) && typeof info.current === 'string' && info.current) ? info.current : appVersion;
+  const curEl = document.getElementById('updateCurrent');
+  if (curEl) {
+    curEl.textContent = cur ? ('v' + cur) : (updateEndpointsAvailable === false ? 'unavailable' : 'unknown');
+    curEl.className = 'statusline' + (cur ? ' ok' : '');
+  }
+  const managedNote = document.getElementById('updateManagedNote');
+  if (managedNote) managedNote.hidden = !managed;
+  const st = updateStatusLine(info);
+  statusEl.textContent = st.text;
+  statusEl.className = 'statusline ' + (st.cls || '');
+  const noteEl = document.getElementById('updateNote');
+  if (noteEl) {
+    let note = '';
+    if (managed) note = 'Package-manager installs should be updated with that package manager to stay consistent.';
+    else if (inGame && (available || ready)) note = ready ? 'A game is live \u2014 finish the match before installing.' : 'A game is live \u2014 finish the match before downloading or installing.';
+    noteEl.textContent = note;
+    noteEl.hidden = !note;
+  }
+  const checkBtn = document.getElementById('updateCheckBtn');
+  const dlBtn = document.getElementById('updateDownloadBtn');
+  const applyBtn = document.getElementById('updateApplyBtn');
+  if (checkBtn) {
+    checkBtn.disabled = updateBusy || updateEndpointsAvailable === false;
+    checkBtn.textContent = updateBusy ? 'Working\u2026' : 'Check now';
+  }
+  if (dlBtn) {
+    dlBtn.hidden = !(available && !ready && !managed);
+    dlBtn.disabled = updateBusy || inGame;
+    dlBtn.title = inGame ? 'wait until the game ends' : 'download and verify the update';
+  }
+  if (applyBtn) {
+    applyBtn.hidden = !((ready || updateStateIs(info, ['restart_required', 'restart-required'])) && !managed);
+    applyBtn.disabled = updateBusy || inGame;
+    applyBtn.title = inGame ? 'wait until the game ends' : 'install the downloaded update and restart RiftSense';
+  }
+  const notesToggle = document.getElementById('updateNotesToggle');
+  const notesBody = document.getElementById('updateNotes');
+  if (notesToggle && notesBody) {
+    const notes = (isObj(info) && typeof info.notes === 'string') ? info.notes.trim() : '';
+    notesToggle.hidden = !notes;
+    notesBody.innerHTML = notes ? esc(notes).replace(/\r?\n/g, '<br>') : '';
+  }
+  renderUpdateBanner();
+}
+async function pollUpdate(){
+  try {
+    const r = await fetchJson('/api/update', 6000);
+    if (r.status === 404 || r.badJson || !isObj(r.json)) {
+      updateEndpointsAvailable = false;
+      updateInfo = null;
+      renderUpdate();
+      return;
+    }
+    updateEndpointsAvailable = true;
+    updateInfo = r.json;
+    renderUpdate();
+  } catch (e) {
+    if (updateEndpointsAvailable === null) { updateEndpointsAvailable = false; renderUpdate(); }
+  }
+}
+async function updateCheckNow(){
+  if (updateBusy) return;
+  updateBusy = true;
+  renderUpdate();
+  try {
+    const r = await postJson('/api/update/check', { force: true, channel: updatePrefs.channel }, 15000);
+    if (r.status === 404) updateEndpointsAvailable = false;
+    else if (isObj(r.json)) { updateInfo = r.json; updateEndpointsAvailable = true; }
+  } catch (e) {}
+  updateBusy = false;
+  await pollUpdate();
+}
+async function updateDownload(){
+  if (updateBusy) return false;
+  updateBusy = true;
+  if (isObj(updateInfo)) updateInfo.status = 'downloading';
+  renderUpdate();
+  try {
+    const r = await postJson('/api/update/download', {}, 180000);
+    if (r.status === 404) updateEndpointsAvailable = false;
+    else if (isObj(r.json)) { updateInfo = r.json; updateEndpointsAvailable = true; }
+  } catch (e) {}
+  updateBusy = false;
+  await pollUpdate();
+  return updateIsReady(updateInfo);
+}
+async function updateApply(){
+  if (updateBusy) return;
+  if (state.inGame) { announce('Finish the match before installing the update.'); return; }
+  if (!updateIsReady(updateInfo) && !updateStateIs(updateInfo, ['restart_required', 'restart-required'])) {
+    const ok = await updateDownload();
+    if (!ok && !updateStateIs(updateInfo, ['restart_required', 'restart-required'])) return;
+  }
+  if (state.inGame) { announce('Finish the match before installing the update.'); return; }
+  updateBusy = true;
+  renderUpdate();
+  try {
+    const r = await postJson('/api/update/apply', {}, 15000);
+    if (r.status === 404) updateEndpointsAvailable = false;
+    else if (isObj(r.json)) { updateInfo = r.json; updateEndpointsAvailable = true; }
+  } catch (e) {}
+  updateBusy = false;
+  announce('Update installer started. RiftSense will restart.');
+  renderUpdate();
+}
+function updateBannerLater(){
+  const info = updateInfo;
+  updateDismissedVersion = (isObj(info) && typeof info.latest === 'string' && info.latest) ? info.latest : 'update';
+  renderUpdateBanner();
+}
+const updateChannelEl = document.getElementById('updateChannel');
+if (updateChannelEl) {
+  updateChannelEl.value = updatePrefs.channel;
+  updateChannelEl.addEventListener('change', () => {
+    updatePrefs.channel = updateChannelEl.value === 'beta' ? 'beta' : 'stable';
+    saveUpdatePrefs();
+    updateCheckNow();
+  });
+}
+const updateAutoEl = document.getElementById('updateAutoCheck');
+if (updateAutoEl) {
+  updateAutoEl.checked = updatePrefs.auto;
+  updateAutoEl.addEventListener('change', () => { updatePrefs.auto = !!updateAutoEl.checked; saveUpdatePrefs(); });
+}
+const updateCheckEl = document.getElementById('updateCheckBtn');
+if (updateCheckEl) updateCheckEl.addEventListener('click', updateCheckNow);
+const updateDownloadEl = document.getElementById('updateDownloadBtn');
+if (updateDownloadEl) updateDownloadEl.addEventListener('click', updateDownload);
+const updateApplyEl = document.getElementById('updateApplyBtn');
+if (updateApplyEl) updateApplyEl.addEventListener('click', updateApply);
+const updateNotesToggleEl = document.getElementById('updateNotesToggle');
+if (updateNotesToggleEl) updateNotesToggleEl.addEventListener('click', () => {
+  const body = document.getElementById('updateNotes');
+  const open = updateNotesToggleEl.getAttribute('aria-expanded') === 'true';
+  updateNotesToggleEl.setAttribute('aria-expanded', open ? 'false' : 'true');
+  if (body) body.hidden = open;
+});
+const updateBannerLaterEl = document.getElementById('updateBannerLater');
+if (updateBannerLaterEl) updateBannerLaterEl.addEventListener('click', updateBannerLater);
+const updateBannerInstallEl = document.getElementById('updateBannerInstall');
+if (updateBannerInstallEl) updateBannerInstallEl.addEventListener('click', updateApply);
+async function updateScheduledPoll(){
+  if (!updatePrefs.auto) return;
+  await pollUpdate();
+}
+pollUpdate();
+scheduleLoop(updateScheduledPoll, 60000);
 
 function tickClock(){
   if (!state.inGame || num(state.time) == null) { updateHealthUI(); return; }
@@ -2912,6 +3217,7 @@ function setMode(mode){
     renderReview();
   } else if (currentMode === 'setup') {
     updateHealthUI(true);
+    renderUpdate();
   } else {
     renderActionSlot();
   }
