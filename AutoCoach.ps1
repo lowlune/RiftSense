@@ -72,6 +72,13 @@ $script:ts = ''
 $script:myName = ''
 $script:myGameName = ''
 $script:myTagLine = ''
+$script:snapHistory = New-Object 'System.Collections.Generic.List[object]'
+$script:eventHistory = New-Object 'System.Collections.Generic.List[object]'
+$script:eventKeys = @{}
+$script:SnapHistoryLimit = 12
+$script:EventHistoryLimit = 24
+$script:PreDeathWindowSeconds = 90
+$script:PreDeathEventLimit = 6
 
 function Stop-ProcessTree {
     param($Process)
@@ -174,6 +181,251 @@ function Get-EventKey {
     return ("t:{0}|k:{1}|v:{2}" -f $E.EventTime, $E.KillerName, $E.VictimName)
 }
 
+function Format-GameClock {
+    param([double]$Time)
+    $total = [int][math]::Floor($Time)
+    if ($total -lt 0) { $total = 0 }
+    return ('{0}:{1:00}' -f [int][math]::Floor($total / 60), ($total % 60))
+}
+
+function Get-PlayerLabel {
+    param($P)
+    $full = "$($P.riotId)"
+    if (-not $full) {
+        if ($P.riotIdGameName -and $P.riotIdTagLine) { $full = "$($P.riotIdGameName)#$($P.riotIdTagLine)" }
+        elseif ($P.riotIdGameName) { $full = "$($P.riotIdGameName)" }
+        elseif ($P.summonerName) { $full = "$($P.summonerName)" }
+    }
+    return $full
+}
+
+function Test-KillerIsChampion {
+    param($Data, [string]$Killer)
+    if (-not $Killer) { return $false }
+    if (-not $Data -or -not $Data.allPlayers) { return $false }
+    foreach ($p in $Data.allPlayers) {
+        foreach ($n in @((Get-PlayerLabel $p), "$($p.riotIdGameName)", "$($p.summonerName)")) {
+            $n = "$n"
+            if ($n -and ($n -ieq $Killer)) { return $true }
+        }
+    }
+    return $false
+}
+
+function Get-EventText {
+    param($Event)
+    if (-not $Event) { return '' }
+    $t = Format-GameClock ([double]$Event.EventTime)
+    switch ("$($Event.EventName)") {
+        'ChampionKill' { return ("{0} K {1}>{2}" -f $t, $Event.KillerName, $Event.VictimName) }
+        'DragonKill' { return ("{0} Drg {1} {2}" -f $t, $Event.DragonType, $Event.KillerName) }
+        'BaronKill' { return ("{0} Baron {1}" -f $t, $Event.KillerName) }
+        'HeraldKill' { return ("{0} Herald {1}" -f $t, $Event.KillerName) }
+        'HordeKill' { return ("{0} Grubs {1}" -f $t, $Event.KillerName) }
+        'FirstBlood' { return ("{0} FirstBlood {1}" -f $t, $Event.Recipient) }
+        'TurretKilled' {
+            $side = '?'
+            $tk = "$($Event.TurretKilled)"
+            if ($tk -like '*TOrder*') { $side = 'O' } elseif ($tk -like '*TChaos*') { $side = 'C' }
+            return ("{0} Turret {1} {2}" -f $t, $side, $Event.KillerName)
+        }
+        'InhibKilled' {
+            $side = '?'
+            $ik = "$($Event.InhibKilled)"
+            if ($ik -like '*TOrder*') { $side = 'O' } elseif ($ik -like '*TChaos*') { $side = 'C' }
+            return ("{0} Inhib {1} {2}" -f $t, $side, $Event.KillerName)
+        }
+        default { return '' }
+    }
+}
+
+function Add-GameEvent {
+    param($Event)
+    if (-not $Event) { return }
+    if (-not "$($Event.EventName)") { return }
+    $key = Get-EventKey $Event
+    if ($script:eventKeys.ContainsKey($key)) { return }
+    $script:eventKeys[$key] = $true
+    $text = Get-EventText $Event
+    if (-not $text) { return }
+    $script:eventHistory.Add([pscustomobject]@{ Key = $key; Time = [double]$Event.EventTime; Text = $text })
+    while ($script:eventHistory.Count -gt $script:EventHistoryLimit) { $script:eventHistory.RemoveAt(0) }
+}
+
+function Add-GameEvents {
+    param($Data)
+    if (-not $Data.events -or -not $Data.events.Events) { return }
+    foreach ($e in $Data.events.Events) { Add-GameEvent -Event $e }
+}
+
+function Get-ItemCounts {
+    param($Ids)
+    $counts = @{}
+    foreach ($id in @($Ids)) {
+        $k = "$id"
+        if ($k -eq '' -or $k -eq '0') { continue }
+        if ($counts.ContainsKey($k)) { $counts[$k] = [int]$counts[$k] + 1 } else { $counts[$k] = 1 }
+    }
+    return $counts
+}
+
+function Format-SnapshotLine {
+    param($S)
+    $level = '?'
+    if ($null -ne $S.Level) { $level = "L$($S.Level)" }
+    $k = '?'; if ($null -ne $S.K) { $k = "$($S.K)" }
+    $d = '?'; if ($null -ne $S.D) { $d = "$($S.D)" }
+    $a = '?'; if ($null -ne $S.A) { $a = "$($S.A)" }
+    $cs = '?'; if ($null -ne $S.CS) { $cs = "CS$($S.CS)" }
+    $gold = '?g'; if ($null -ne $S.Gold) { $gold = "$($S.Gold)g" }
+    $items = '-'
+    $counts = Get-ItemCounts $S.Items
+    if ($counts.Count) {
+        $items = (($counts.Keys | Sort-Object { [int]$_ } | ForEach-Object { "$($_)x$($counts[$_])" }) -join ',')
+    }
+    return ("t={0} {1} {2}/{3}/{4} {5} {6} items:{7}" -f (Format-GameClock ([double]$S.GameTime)), $level, $k, $d, $a, $cs, $gold, $items)
+}
+
+function Add-GameSnapshot {
+    param($Data, [double]$GameTime, [int]$Seq)
+    $ap = $Data.activePlayer
+    $me = $null
+    foreach ($p in $Data.allPlayers) { if (Test-SamePlayer $p $ap) { $me = $p; break } }
+    $gold = $null
+    if ($ap -and ($null -ne $ap.currentGold)) {
+        try { $gold = [int][math]::Round([double]$ap.currentGold) } catch { $gold = $null }
+    }
+    $level = $null
+    if ($me -and ($null -ne $me.level)) { try { $level = [int]$me.level } catch { $level = $null } }
+    if (($null -eq $level) -and $ap -and ($null -ne $ap.level)) { try { $level = [int]$ap.level } catch { } }
+    $k = Get-PStat $me 'kills'
+    $d = Get-PStat $me 'deaths'
+    $a = Get-PStat $me 'assists'
+    $cs = Get-PStat $me 'creepScore'
+    $itemIds = @()
+    if ($me -and $me.items) {
+        foreach ($it in $me.items) {
+            $id = 0
+            if ($null -ne $it.itemID) { try { $id = [int]$it.itemID } catch { $id = 0 } }
+            if ($id -gt 0) { $itemIds += $id }
+        }
+    }
+    $snap = [pscustomobject]@{
+        GameTime = [double]$GameTime
+        Seq = [int]$Seq
+        Gold = $gold
+        Level = $level
+        K = $k
+        D = $d
+        A = $a
+        CS = $cs
+        Items = @($itemIds)
+    }
+    $script:snapHistory.Add($snap)
+    while ($script:snapHistory.Count -gt $script:SnapHistoryLimit) { $script:snapHistory.RemoveAt(0) }
+}
+
+function Get-PreDeathWindow {
+    param([double]$Time)
+    $start = $Time - $script:PreDeathWindowSeconds
+    $snaps = @($script:snapHistory | Where-Object { ([double]$_.GameTime -ge $start) -and ([double]$_.GameTime -le ($Time + 0.001)) })
+    if (-not $snaps.Count) { $snaps = @($script:snapHistory | Select-Object -Last 1) }
+    if (-not $snaps.Count) { return '' }
+    $lines = @()
+    foreach ($s in $snaps) { $lines += (Format-SnapshotLine $s) }
+    if ($snaps.Count -ge 2) {
+        $first = $snaps[0]
+        $last = $snaps[$snaps.Count - 1]
+        $delta = @()
+        if (($null -ne $first.Level) -and ($null -ne $last.Level)) { $delta += ("level {0:+0;-0;0}" -f ([int]$last.Level - [int]$first.Level)) }
+        if (($null -ne $first.Gold) -and ($null -ne $last.Gold)) { $delta += ("gold {0:+0;-0;0}" -f ([int]$last.Gold - [int]$first.Gold)) }
+        if (($null -ne $first.CS) -and ($null -ne $last.CS)) { $delta += ("CS {0:+0;-0;0}" -f ([int]$last.CS - [int]$first.CS)) }
+        $fk = 0; if ($null -ne $first.K) { $fk = [int]$first.K }
+        $fd = 0; if ($null -ne $first.D) { $fd = [int]$first.D }
+        $fa = 0; if ($null -ne $first.A) { $fa = [int]$first.A }
+        $lk = 0; if ($null -ne $last.K) { $lk = [int]$last.K }
+        $ld = 0; if ($null -ne $last.D) { $ld = [int]$last.D }
+        $la = 0; if ($null -ne $last.A) { $la = [int]$last.A }
+        $delta += ("KDA {0:+0;-0;0}/{1:+0;-0;0}/{2:+0;-0;0}" -f ($lk - $fk), ($ld - $fd), ($la - $fa))
+        $firstCounts = Get-ItemCounts $first.Items
+        $lastCounts = Get-ItemCounts $last.Items
+        $itemKeys = @{}
+        foreach ($key in $firstCounts.Keys) { $itemKeys[$key] = $true }
+        foreach ($key in $lastCounts.Keys) { $itemKeys[$key] = $true }
+        $itemDelta = @()
+        foreach ($key in ($itemKeys.Keys | Sort-Object { [int]$_ })) {
+            $was = 0; if ($firstCounts.ContainsKey($key)) { $was = [int]$firstCounts[$key] }
+            $now = 0; if ($lastCounts.ContainsKey($key)) { $now = [int]$lastCounts[$key] }
+            $diff = $now - $was
+            if ($diff -gt 0) { $itemDelta += ("$key+$diff") } elseif ($diff -lt 0) { $itemDelta += ("$key$diff") }
+        }
+        if ($itemDelta.Count) { $delta += ("items " + ($itemDelta -join ',')) }
+        $lines += ("DELTA(" + (Format-GameClock ([double]$first.GameTime)) + "->" + (Format-GameClock ([double]$last.GameTime)) + "): " + ($delta -join ', '))
+    }
+    $evLines = @()
+    foreach ($ev in ($script:eventHistory | Where-Object { [double]$_.Time -le ($Time + 0.001) } | Select-Object -Last $script:PreDeathEventLimit)) {
+        $evLines += $ev.Text
+    }
+    if ($evLines.Count) { $lines += ("EVENTS: " + ($evLines -join ' | ')) }
+    return (($lines -join "`r`n"))
+}
+
+function ConvertFrom-DeathReport {
+    param([string]$Text)
+    $facts = New-Object 'System.Collections.Generic.List[string]'
+    $hypotheses = New-Object 'System.Collections.Generic.List[string]'
+    $now = ''
+    $next = ''
+    $doNow = ''
+    $died = ''
+    $bucket = ''
+    foreach ($rawLine in ($Text -split "`r?`n")) {
+        $l = "$rawLine".Trim()
+        if (-not $l) { continue }
+        if ($l -match '^OBSERVED\s*:\s*(.*)$') {
+            $v = "$($matches[1])".Trim()
+            if ($v) { $facts.Add($v) }
+            $bucket = 'facts'
+        } elseif ($l -match '^HYPOTHES(?:IS|ES)\s*:\s*(.*)$') {
+            $v = "$($matches[1])".Trim()
+            if ($v) { $hypotheses.Add($v) }
+            $bucket = 'hypotheses'
+        } elseif ($l -match '^WHY\s*:\s*(.*)$') {
+            $v = "$($matches[1])".Trim()
+            if ($v) { $hypotheses.Add($v) }
+            $bucket = 'hypotheses'
+        } elseif ($l -match '^NOW\s*:\s*(.*)$') {
+            $now = "$($matches[1])".Trim()
+            $bucket = 'now'
+        } elseif ($l -match '^NEXT\s*:\s*(.*)$') {
+            $next = "$($matches[1])".Trim()
+            $bucket = 'next'
+        } elseif ($l -match '^DO NOW\s*:\s*(.*)$') {
+            $doNow = "$($matches[1])".Trim()
+            $bucket = 'doNow'
+        } elseif ($l -match '^DIED\s*:\s*(.*)$') {
+            $died = "$($matches[1])".Trim()
+            $bucket = ''
+        } else {
+            switch ($bucket) {
+                'facts' { if ($facts.Count) { $facts[$facts.Count - 1] = $facts[$facts.Count - 1] + ' ' + $l } else { $facts.Add($l) } }
+                'hypotheses' { if ($hypotheses.Count) { $hypotheses[$hypotheses.Count - 1] = $hypotheses[$hypotheses.Count - 1] + ' ' + $l } else { $hypotheses.Add($l) } }
+                'now' { if ($now) { $now = $now + ' ' + $l } else { $now = $l } }
+                'next' { if ($next) { $next = $next + ' ' + $l } else { $next = $l } }
+                'doNow' { if ($doNow) { $doNow = $doNow + ' ' + $l } else { $doNow = $l } }
+            }
+        }
+    }
+    return [pscustomobject]@{
+        Facts = @($facts)
+        Hypotheses = @($hypotheses)
+        Now = $now
+        Next = $next
+        DoNow = $doNow
+        Died = $died
+    }
+}
+
 function Stop-Workers {
     if ($script:tickProc) {
         Stop-ProcessTree $script:tickProc
@@ -208,8 +460,12 @@ function Start-Session {
     $script:nextTickAt = [datetime]::MinValue
     $script:coachSessionId = ''
     $script:seq = 0
+    $script:snapHistory = New-Object 'System.Collections.Generic.List[object]'
+    $script:eventHistory = New-Object 'System.Collections.Generic.List[object]'
+    $script:eventKeys = @{}
     if ($Data.events -and $Data.events.Events) {
         foreach ($e in $Data.events.Events) {
+            Add-GameEvent -Event $e
             if ("$($e.EventName)" -ne 'ChampionKill') { continue }
             $script:processedDeathKeys[(Get-EventKey $e)] = $true
             if (Test-IsVictimMe "$($e.VictimName)") {
@@ -236,15 +492,15 @@ function Close-Session {
 }
 
 function New-DeathRecord {
-    param([string]$Key, [double]$Time, [string]$Killer)
-    $total = [int][math]::Floor($Time)
-    if ($total -lt 0) { $total = 0 }
-    $clock = '{0}:{1:00}' -f [int][math]::Floor($total / 60), ($total % 60)
+    param([string]$Key, [double]$Time, [string]$Killer, [bool]$KilledByChampion)
+    $clock = Format-GameClock $Time
     $script:activeDeath = [pscustomobject]@{
         Key = $Key
         Time = $Time
         Killer = $Killer
         Clock = $clock
+        KilledByChampion = $KilledByChampion
+        Window = (Get-PreDeathWindow -Time $Time)
         Attempts = 0
         State = 'detected'
         Session = $script:sessionId
@@ -265,7 +521,7 @@ function Handle-DeathFailure {
     $ad.State = 'failed'
     $failText = ("DIED: {0} to {1} - report unavailable ({2})" -f $ad.Clock, $ad.Killer, $Reason)
     Publish-Text -Path $script:deathFile -Text $failText
-    Publish-Envelope -Path $script:deathMeta -Kind 'death' -Status 'failed' -Text $failText -ErrorText $Reason -ObservedGameTime $ad.GameTime -Seq $ad.Seq -Extra @{ clock = $ad.Clock; killer = $ad.Killer; eventTime = $ad.Time }
+    Publish-Envelope -Path $script:deathMeta -Kind 'death' -Status 'failed' -Text $failText -ErrorText $Reason -ObservedGameTime $ad.GameTime -Seq $ad.Seq -Extra @{ clock = $ad.Clock; killer = $ad.Killer; eventTime = $ad.Time; killedByChampion = [bool]$ad.KilledByChampion }
     Write-Host "[$script:ts] Death report failed ($Reason)." -ForegroundColor Red
     if ([int]$ad.Attempts -ge 3) {
         $script:processedDeathKeys[$ad.Key] = $true
@@ -285,9 +541,11 @@ function Start-DeathWorker {
     $script:deathRetryAt = [datetime]::MinValue
     $pending = ("PENDING|" + $ad.Clock + "|" + $ad.Killer)
     Publish-Text -Path $script:deathFile -Text $pending
-    Publish-Envelope -Path $script:deathMeta -Kind 'death' -Status 'pending' -Text $pending -ErrorText '' -ObservedGameTime $ad.GameTime -Seq $ad.Seq -Extra @{ clock = $ad.Clock; killer = $ad.Killer; eventTime = $ad.Time }
+    Publish-Envelope -Path $script:deathMeta -Kind 'death' -Status 'pending' -Text $pending -ErrorText '' -ObservedGameTime $ad.GameTime -Seq $ad.Seq -Extra @{ clock = $ad.Clock; killer = $ad.Killer; eventTime = $ad.Time; killedByChampion = [bool]$ad.KilledByChampion }
     Write-Host "[$script:ts] Death detected at $($ad.Clock) (to $($ad.Killer)) - generating report... (attempt $($ad.Attempts))" -ForegroundColor Red
-    $deathPrompt = "DEATH REPORT. You just died at $($ad.Clock) to $($ad.Killer). The live game data and your build intent are included below - answer directly from them. Output up to 4 hidden reasoning lines first (>>), then the ===DEATH=== block exactly per your Death reports section (DIED/WHY/NOW/NEXT/DO NOW), under 8 lines total."
+    $windowBlock = "PRE-DEATH WINDOW (observed snapshots and events from your own game data; use these for OBSERVED lines):`r`n" + "$($ad.Window)"
+    if (-not ("$($ad.Window)").Trim()) { $windowBlock = 'PRE-DEATH WINDOW: unavailable.' }
+    $deathPrompt = "DEATH REPORT. You just died at $($ad.Clock) to $($ad.Killer). The live game data, pre-death window, and your build intent are included below - answer directly from them.`r`n$windowBlock`r`nOutput up to 4 hidden reasoning lines first (>>), then the ===DEATH=== block exactly per your Death reports section: DIED, OBSERVED: lines (facts only, from the supplied data), HYPOTHESIS: lines (possible explanations), NOW, NEXT, DO NOW. Say insufficient evidence if the data cannot support a cause. Max 12 lines total."
     $p = $null
     try { $p = Start-CoachRun -Prompt $deathPrompt -OutFile $script:deathOut -ErrFile $script:deathErr -Champ $script:sessionChamp } catch { $p = $null }
     if (-not $p) {
@@ -410,8 +668,24 @@ function Update-Workers {
             $script:deathProc = $null
             $script:deathWatch = $null
             if ($valid -and $sameSession) {
+                $parsed = ConvertFrom-DeathReport -Text $body
                 Publish-Text -Path $script:deathFile -Text $body
-                Publish-Envelope -Path $script:deathMeta -Kind 'death' -Status 'ok' -Text $body -ErrorText '' -ObservedGameTime $ad.GameTime -Seq $ad.Seq -Extra @{ clock = $ad.Clock; killer = $ad.Killer; eventTime = $ad.Time }
+                Publish-Envelope -Path $script:deathMeta -Kind 'death' -Status 'ok' -Text $body -ErrorText '' -ObservedGameTime $ad.GameTime -Seq $ad.Seq -Extra @{
+                    sessionId = $script:sessionId
+                    clock = $ad.Clock
+                    gameClock = $ad.Clock
+                    killer = $ad.Killer
+                    killedByChampion = [bool]$ad.KilledByChampion
+                    eventTime = $ad.Time
+                    observedAt = (Get-Date).ToUniversalTime().ToString('o')
+                    died = $parsed.Died
+                    facts = @($parsed.Facts)
+                    hypotheses = @($parsed.Hypotheses)
+                    now = $parsed.Now
+                    next = $parsed.Next
+                    doNow = $parsed.DoNow
+                    raw = $out
+                }
                 $script:processedDeathKeys[$ad.Key] = $true
                 $script:lastDeathT = [math]::Max([double]$script:lastDeathT, [double]$ad.Time)
                 $script:deathState = 'completed'
@@ -560,6 +834,8 @@ try {
         }
         $script:lastGameTime = $gt
         $script:seq++
+        Add-GameSnapshot -Data $d -GameTime $gt -Seq $script:seq
+        Add-GameEvents -Data $d
 
         Update-Workers
 
@@ -587,7 +863,7 @@ try {
                     $script:deathProc = $null
                     $script:deathWatch = $null
                 }
-                New-DeathRecord -Key $bestKey -Time $bestT -Killer $bestKiller
+                New-DeathRecord -Key $bestKey -Time $bestT -Killer $bestKiller -KilledByChampion (Test-KillerIsChampion -Data $d -Killer $bestKiller)
             }
         }
         if ($script:activeDeath -and -not $script:deathProc -and ([datetime]::Now -ge $script:deathRetryAt)) {

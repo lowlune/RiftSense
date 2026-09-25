@@ -96,6 +96,15 @@
   .dloading { display: flex; align-items: center; gap: 8px; color: var(--dim); font-style: italic; padding: 4px 0; font-size: 13px; }
   .dloading i { animation: spin 1s linear infinite; font-size: 14px; color: #FF9A9A; }
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .dsec { display: flex; flex-direction: column; gap: 3px; margin-top: 1px; }
+  .dsec .dsec-tag { display: flex; align-items: center; gap: 5px; font: 700 9.5px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .1em; }
+  .dsec.obs .dsec-tag { color: #7FD1A8; }
+  .dsec.hyp .dsec-tag { color: var(--amber); }
+  .dlist { list-style: none; display: flex; flex-direction: column; gap: 2px; margin: 0; }
+  .dlist li { position: relative; padding-left: 11px; font-size: 12.5px; line-height: 1.45; color: var(--text); }
+  .dlist li::before { content: "\00b7"; position: absolute; left: 1px; color: var(--dim); }
+  .dinsuf { display: flex; align-items: center; gap: 6px; color: var(--amber); font-size: 12.5px; font-style: italic; padding: 1px 0; }
+  .dinsuf i { font-size: 13px; }
 
   .slab {
     flex: 1 1 auto; min-height: 0;
@@ -861,6 +870,49 @@ function renderCoach(j){
   el.innerHTML = html;
 }
 
+const DEATH_INSUFFICIENT_RE = /^insufficient evidence\b/i;
+
+function deathStringList(value, cap){
+  return (Array.isArray(value) ? value : [])
+    .filter(t => typeof t === 'string' && t.trim())
+    .map(t => t.trim().slice(0, 500))
+    .slice(0, cap || 8);
+}
+
+function structuredDeathHtml(st){
+  const facts = deathStringList(st.facts);
+  const hyps = deathStringList(st.hypotheses);
+  const factsReal = facts.filter(t => !DEATH_INSUFFICIENT_RE.test(t));
+  const hypsReal = hyps.filter(t => !DEATH_INSUFFICIENT_RE.test(t));
+  const died = typeof st.died === 'string' && st.died.trim() ? st.died.trim()
+    : (typeof st.gameClock === 'string' && st.gameClock.trim()
+      ? st.gameClock.trim() + (typeof st.killer === 'string' && st.killer.trim() ? ' to ' + st.killer.trim() : '')
+      : '');
+  let html = '';
+  if (died) html += `<div class="chead death"><i class="ph-fill ph-skull"></i> Died ${highlight(died)}</div>`;
+  if (!factsReal.length && !hypsReal.length) {
+    html += `<div class="dinsuf"><i class="ph-fill ph-question"></i>Insufficient evidence for a cause \u2014 the report could not establish why.</div>`;
+  } else {
+    if (factsReal.length) {
+      html += '<div class="dsec obs"><div class="dsec-tag"><i class="ph-fill ph-binoculars"></i>OBSERVED</div><ul class="dlist">';
+      for (const t of factsReal) html += `<li>${highlight(t)}</li>`;
+      html += '</ul></div>';
+    }
+    if (hypsReal.length) {
+      html += '<div class="dsec hyp"><div class="dsec-tag"><i class="ph-fill ph-question"></i>HYPOTHESIS</div><ul class="dlist">';
+      for (const t of hypsReal) html += `<li>${highlight(t)}</li>`;
+      html += '</ul></div>';
+    }
+  }
+  const now = typeof st.now === 'string' ? st.now.trim() : '';
+  const next = typeof st.next === 'string' ? st.next.trim() : '';
+  const doNow = typeof st.doNow === 'string' ? st.doNow.trim() : '';
+  if (now) html += `<div class="crow now"><span class="ctag"><i class="ph-fill ph-hourglass"></i>NOW</span><span class="ctext">${highlight(now)}</span></div>`;
+  if (next) html += `<div class="crow next"><span class="ctag"><i class="ph-fill ph-arrow-right"></i>NEXT</span><span class="ctext">${highlight(next)}</span></div>`;
+  if (doNow) html += `<div class="donow"><span class="ctag"><i class="ph-fill ph-lightning"></i>DO NOW</span><span class="ctext">${highlight(doNow)}</span></div>`;
+  return html;
+}
+
 function renderDeath(j){
   if (!isObj(j)) return;
   const wrap = document.getElementById('deathWrap');
@@ -885,6 +937,7 @@ function renderDeath(j){
   ring.style.display = '';
   deathAnchor = { kind: 'final', age: age, at: performance.now() };
   updateDeathRing();
+  if (isObj(j.structured)) { el.innerHTML = structuredDeathHtml(j.structured); return; }
   let html = '';
   for (const raw of text.split(/\r?\n/)) {
     const l = tidy(raw).trim();

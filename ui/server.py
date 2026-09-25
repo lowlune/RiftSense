@@ -28,6 +28,7 @@ ITEM_FILE = os.path.join(ROOT, 'items.json')
 BUILD_FILE = os.path.join(ROOT, 'build_intent.txt')
 COACH_FILE = os.path.join(ROOT, 'coach_latest.txt')
 DEATH_FILE = os.path.join(ROOT, 'death_latest.txt')
+DEATH_META_FILE = os.path.join(ROOT, 'death_latest.json')
 EPOCH_FILE = os.path.join(ROOT, 'game_epoch.json')
 DB_PATH = os.path.join(os.path.expanduser('~'), '.local', 'share', 'opencode', 'opencode.db')
 PORT = int(os.environ.get('RIFTSENSE_PORT', '7777'))
@@ -38,6 +39,10 @@ CDN_URL = 'https://ddragon.leagueoflegends.com/cdn/%s/data/en_US/%s.json'
 EPOCH_DRIFT_MS = 120000
 GAME_TIME_MAX = 6 * 60 * 60
 NO_GAME_REASONS = ('no_active_game', 'client_unreachable')
+DEATH_STRUCTURED_STATUS = ('ok',)
+DEATH_STRUCTURED_TTL = 900
+DEATH_STRUCTURED_MAX_BYTES = 262144
+DEATH_STRUCTURED_MAX_ITEMS = 20
 
 SSL_CTX = ssl.create_default_context()
 SSL_CTX.check_hostname = False
@@ -812,6 +817,79 @@ def read_text_file(path):
     return last_text.strip(), None, 'unstable'
 
 
+def _death_text(value, limit):
+    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+        return ''
+    return str(value).strip()[:limit]
+
+
+def read_death_structured(now=None):
+    now = time.time() if now is None else now
+    try:
+        st = os.stat(DEATH_META_FILE)
+    except OSError:
+        return None
+    if st.st_size <= 0 or st.st_size > DEATH_STRUCTURED_MAX_BYTES:
+        return None
+    if now - st.st_mtime > DEATH_STRUCTURED_TTL:
+        return None
+    try:
+        with open(DEATH_META_FILE, 'r', encoding='utf-8-sig', errors='replace') as f:
+            obj = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(obj, dict):
+        return None
+    if obj.get('schema') != 'riftsense.v1' or obj.get('kind') != 'death':
+        return None
+    if obj.get('status') not in DEATH_STRUCTURED_STATUS:
+        return None
+    raw_facts = obj.get('facts')
+    raw_hypotheses = obj.get('hypotheses')
+    if not isinstance(raw_facts, list) or not isinstance(raw_hypotheses, list):
+        return None
+
+    def _lines(values):
+        out = []
+        for value in values:
+            text = _death_text(value, 500)
+            if text:
+                out.append(text)
+            if len(out) >= DEATH_STRUCTURED_MAX_ITEMS:
+                break
+        return out
+
+    facts = _lines(raw_facts)
+    hypotheses = _lines(raw_hypotheses)
+    now_text = _death_text(obj.get('now'), 800)
+    next_text = _death_text(obj.get('next'), 800)
+    do_now = _death_text(obj.get('doNow'), 800)
+    if not (facts or hypotheses or now_text or next_text or do_now):
+        return None
+    session_id = obj.get('sessionId') or obj.get('session')
+    if not isinstance(session_id, str):
+        session_id = None
+    seq_value = obj.get('seq')
+    if isinstance(seq_value, bool) or not isinstance(seq_value, int):
+        seq_value = None
+    return {
+        'schema': 'riftsense.v1',
+        'sessionId': session_id,
+        'seq': seq_value,
+        'observedAt': _death_text(obj.get('observedAt') or obj.get('completedAt'), 64),
+        'gameClock': _death_text(obj.get('gameClock'), 32),
+        'killer': _death_text(obj.get('killer'), 120),
+        'killedByChampion': obj.get('killedByChampion') is True,
+        'died': _death_text(obj.get('died'), 200),
+        'facts': facts,
+        'hypotheses': hypotheses,
+        'now': now_text,
+        'next': next_text,
+        'doNow': do_now,
+        'raw': _death_text(obj.get('raw'), 20000),
+    }
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     def _send(self, payload, ctype='application/json; charset=utf-8', code=200):
         if not isinstance(payload, (bytes, bytearray)):
@@ -854,7 +932,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                        code=500 if status == 'error' else 200)
         elif path == '/api/death':
             text, age, status = read_text_file(DEATH_FILE)
-            self._send({'text': text, 'age': age, 'status': status},
+            try:
+                structured = read_death_structured()
+            except Exception:
+                structured = None
+            self._send({'text': text, 'age': age, 'status': status, 'structured': structured},
                        code=500 if status == 'error' else 200)
         elif path == '/api/cost':
             cost = build_cost()
