@@ -1198,6 +1198,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     self._send(f.read(), 'text/html; charset=utf-8')
             except Exception as ex:
                 self.send_error(500, str(ex))
+        elif path in ('/overlay', '/overlay.html'):
+            try:
+                with open(os.path.join(BASE, 'overlay.html'), 'rb') as f:
+                    self._send(f.read(), 'text/html; charset=utf-8')
+            except Exception as ex:
+                self.send_error(500, str(ex))
         elif path == '/api/version':
             self._send(version_info())
         elif path == '/api/health':

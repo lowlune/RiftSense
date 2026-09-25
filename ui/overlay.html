@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RiftSense Overlay</title>
+<style>
+  :root {
+    --scale: 1;
+    --chroma: #00B140;
+    --text: #F5F1E6;
+    --dim: #A9B4C4;
+    --gold: #E8C878;
+    --red: #FF8A8A;
+    --green: #6FE3A0;
+    --amber: #F2C15C;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    color: var(--text);
+    font: 600 calc(16px * var(--scale))/1.3 "Segoe UI", "Inter", system-ui, sans-serif;
+    overflow: hidden;
+  }
+  body.bg-dark { background: #05090F; }
+  body.bg-transparent { background: transparent; }
+  body.bg-chroma { background: var(--chroma); }
+  .wrap {
+    height: 100%;
+    padding: calc(18px * var(--scale)) calc(24px * var(--scale));
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: calc(12px * var(--scale));
+    text-shadow: 0 2px calc(8px * var(--scale)) rgba(0,0,0,.65);
+  }
+  body.bg-chroma .wrap { text-shadow: none; color: #06210F; }
+  body.bg-chroma .dim, body.bg-chroma .clock, body.bg-chroma .val { color: #06210F; }
+
+  .top { display: flex; align-items: baseline; justify-content: space-between; gap: calc(18px * var(--scale)); flex-wrap: wrap; }
+  .clock {
+    font: 700 calc(64px * var(--scale))/1 "Cascadia Mono", Consolas, monospace;
+    color: #FFFFFF;
+    letter-spacing: .02em;
+  }
+  .clock.stale { color: var(--amber); }
+  .conn { font-size: calc(20px * var(--scale)); font-weight: 700; letter-spacing: .18em; text-transform: uppercase; white-space: nowrap; }
+  .conn.conn-live { color: var(--green); }
+  .conn.conn-wait { color: var(--amber); }
+  .conn.conn-warn { color: var(--amber); }
+  .conn.conn-dead { color: var(--red); }
+  .conn.conn-idle { color: var(--dim); }
+
+  .line {
+    display: flex;
+    align-items: baseline;
+    gap: calc(14px * var(--scale));
+    background: rgba(0,0,0,.42);
+    border: calc(2px * var(--scale)) solid rgba(255,255,255,.14);
+    border-radius: calc(12px * var(--scale));
+    padding: calc(12px * var(--scale)) calc(16px * var(--scale));
+  }
+  body.bg-chroma .line { background: rgba(255,255,255,.55); border-color: rgba(0,0,0,.25); }
+  .line .tag {
+    flex: 0 0 auto;
+    font: 700 calc(16px * var(--scale))/1 "Cascadia Mono", Consolas, monospace;
+    letter-spacing: .1em;
+    padding: calc(5px * var(--scale)) calc(8px * var(--scale));
+    border-radius: calc(6px * var(--scale));
+    background: rgba(255,255,255,.14);
+  }
+  #donow .tag { background: var(--gold); color: #131313; }
+  #death .tag { background: rgba(224,93,111,.9); color: #1A0707; }
+  .line .text { font-size: calc(34px * var(--scale)); line-height: 1.25; min-width: 0; overflow-wrap: anywhere; }
+  #death .text { font-size: calc(30px * var(--scale)); color: var(--red); }
+  body.bg-chroma #death .text { color: #4A0D17; }
+
+  .objs { display: flex; gap: calc(28px * var(--scale)); flex-wrap: wrap; }
+  .obj { display: flex; align-items: baseline; gap: calc(10px * var(--scale)); }
+  .obj .lab { font-size: calc(16px * var(--scale)); font-weight: 700; letter-spacing: .2em; color: var(--dim); }
+  .obj .val { font: 700 calc(40px * var(--scale))/1 "Cascadia Mono", Consolas, monospace; color: #FFFFFF; }
+  .obj.up .val { color: var(--green); }
+  .obj.soon .val { color: var(--amber); }
+
+  .sources { font-size: calc(12px * var(--scale)); font-weight: 600; letter-spacing: .08em; color: var(--dim); text-transform: lowercase; }
+</style>
+</head>
+<body class="bg-dark">
+<div class="wrap" id="wrap">
+  <div class="top">
+    <div class="clock" id="clock">--:--</div>
+    <div class="conn conn-wait" id="conn">connecting</div>
+  </div>
+  <div class="line" id="donow" style="display:none"><span class="tag">DO NOW</span><span class="text" id="donowText"></span></div>
+  <div class="line" id="death" style="display:none"><span class="tag">DIED</span><span class="text" id="deathText"></span></div>
+  <div class="objs">
+    <div class="obj" id="objDragon"><span class="lab">DRAGON</span><span class="val" id="dragonVal">--:--</span></div>
+    <div class="obj" id="objBaron"><span class="lab">BARON</span><span class="val" id="baronVal">--:--</span></div>
+  </div>
+  <div class="sources" id="sources"></div>
+</div>
+<script>
+(function(){
+'use strict';
+
+var FRESH_WINDOW_MS = 6000;
+var GAME_TIME_MAX = 6 * 60 * 60;
+var SOURCE_NAMES = ['game', 'coach', 'death', 'timeline'];
+var BG_MODES = ['dark', 'transparent', 'chroma'];
+var MOJIBAKE = [
+  [/\u00d4\u00c7\u00f6/g, '\u2014'],
+  [/\u00d4\u00c7\u00f4/g, '\u2013'],
+  [/\u00d4\u00c7\u00d6/g, '\u2019'],
+  [/\u00d4\u00c7\u00dc/g, '\u201c'],
+  [/\u00d4\u00c7\u0153/g, '\u201d']
+];
+
+function tidy(s){ var x = String(s == null ? '' : s); for (var i = 0; i < MOJIBAKE.length; i++) x = x.replace(MOJIBAKE[i][0], MOJIBAKE[i][1]); return x; }
+function esc(s){ return tidy(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function num(v){
+  if (typeof v === 'number' && isFinite(v)) return v;
+  if (typeof v === 'string' && v.trim() !== '') { var n = Number(v); if (isFinite(n)) return n; }
+  return null;
+}
+function isObj(v){ return v !== null && typeof v === 'object' && !Array.isArray(v); }
+function fmt(v){
+  var n = num(v);
+  if (n == null || n < 0) return '--:--';
+  var x = Math.max(0, Math.min(GAME_TIME_MAX, Math.floor(n)));
+  return Math.floor(x / 60) + ':' + String(x % 60).padStart(2, '0');
+}
+function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+
+var params = null;
+try { params = new URLSearchParams((typeof location !== 'undefined' && location.search) || ''); } catch (e) { params = null; }
+function qp(name){ try { return params ? params.get(name) : null; } catch (e) { return null; } }
+
+var bgParam = String(qp('bg') || 'dark').toLowerCase();
+var bgMode = BG_MODES.indexOf(bgParam) >= 0 ? bgParam : 'dark';
+var chromaParam = String(qp('chroma') || '');
+var chromaHex = /^[0-9a-fA-F]{6}$/.test(chromaParam) ? chromaParam : '00B140';
+var scaleParam = clamp(num(qp('scale')) == null ? 1 : num(qp('scale')), 0.6, 3);
+var pollParam = clamp(num(qp('poll')) == null ? 2000 : Math.floor(num(qp('poll'))), 1000, 15000);
+
+var src = { game: 'pending', coach: 'pending', death: 'pending', timeline: 'pending' };
+var gameStatus = 'connecting';
+var inGame = false;
+var anchor = { t: 0, at: 0 };
+var lastGoodAt = 0;
+var dragonNext = null, baronNext = null;
+var lastCoach = null;
+var deathDoNow = null;
+
+function hardFailure(){ return gameStatus === 'offline' || gameStatus === 'api_error' || gameStatus === 'malformed'; }
+
+function isStale(){
+  if (!inGame) return false;
+  if (hardFailure()) return true;
+  return lastGoodAt <= 0 || (performance.now() - lastGoodAt) > FRESH_WINDOW_MS;
+}
+
+function clockNow(){
+  if (!inGame || num(anchor.t) == null) return null;
+  if (isStale()) return anchor.t;
+  return anchor.t + (performance.now() - anchor.at) / 1000;
+}
+
+function connInfo(){
+  if (src.game === 'offline') return { cls: 'dead', text: 'server offline' };
+  if (src.game === 'missing') return { cls: 'warn', text: 'game api missing' };
+  if (gameStatus === 'api_error') return { cls: 'warn', text: 'live client error' };
+  if (gameStatus === 'malformed') return { cls: 'warn', text: 'server data error' };
+  if (gameStatus === 'connecting' || src.game === 'pending') return { cls: 'wait', text: 'connecting' };
+  if (!inGame) return { cls: 'idle', text: 'no game' };
+  if (isStale()) return { cls: 'warn', text: 'stale' };
+  return { cls: 'live', text: 'live' };
+}
+
+function paintConn(){
+  var el = document.getElementById('conn');
+  if (el) {
+    var c = connInfo();
+    el.textContent = c.text;
+    el.className = 'conn conn-' + c.cls;
+  }
+  var s = document.getElementById('sources');
+  if (s) {
+    var parts = [];
+    for (var i = 0; i < SOURCE_NAMES.length; i++) {
+      var k = SOURCE_NAMES[i];
+      parts.push(k + ' ' + (src[k] || 'pending'));
+    }
+    s.textContent = parts.join(' \u00b7 ');
+  }
+}
+
+function safeKills(value){
+  var out = [];
+  var list = Array.isArray(value) ? value : [];
+  for (var i = 0; i < list.length; i++) {
+    var raw = list[i];
+    var o = isObj(raw) ? raw : null;
+    var t = num(o ? o.t : raw);
+    if (t == null || t < 0 || t > GAME_TIME_MAX) continue;
+    var type = o && typeof o.type === 'string' ? o.type.slice(0, 24).toLowerCase() : '';
+    out.push({ t: t, type: type });
+  }
+  out.sort(function(a, b){ return a.t - b.t; });
+  return out;
+}
+
+function objectives(s){
+  var kills = safeKills(s && s.dragonKills);
+  var last = kills.length ? kills[kills.length - 1] : null;
+  var elderNext = !!(last && last.type === 'elder');
+  var barons = safeKills(s && s.baronKills);
+  var baronLast = barons.length ? barons[barons.length - 1] : null;
+  return {
+    dragonNext: last ? last.t + (elderNext ? 360 : 300) : 300,
+    dragonCount: kills.length,
+    baronNext: baronLast ? baronLast.t + 360 : 1200
+  };
+}
+
+function timerText(at, t){
+  if (at == null || t == null) return '--:--';
+  var left = at - t;
+  if (left <= 0) return 'UP';
+  return fmt(left);
+}
+
+function renderTimers(t){
+  var dEl = document.getElementById('objDragon');
+  var dVal = document.getElementById('dragonVal');
+  if (dVal) dVal.textContent = num(t) == null ? '--:--' : timerText(dragonNext, t);
+  if (dEl) {
+    var dLeft = num(t) == null ? null : dragonNext - t;
+    dEl.classList.toggle('up', dLeft != null && dLeft <= 0);
+    dEl.classList.toggle('soon', dLeft != null && dLeft > 0 && dLeft <= 60);
+  }
+  var bEl = document.getElementById('objBaron');
+  var bVal = document.getElementById('baronVal');
+  if (bVal) bVal.textContent = num(t) == null ? '--:--' : timerText(baronNext, t);
+  if (bEl) {
+    var bLeft = num(t) == null ? null : baronNext - t;
+    bEl.classList.toggle('up', bLeft != null && bLeft <= 0);
+    bEl.classList.toggle('soon', bLeft != null && bLeft > 0 && bLeft <= 60);
+  }
+}
+
+function tick(){
+  var t = clockNow();
+  var clockEl = document.getElementById('clock');
+  if (clockEl) {
+    clockEl.textContent = t == null ? '--:--' : fmt(t);
+    clockEl.classList.toggle('stale', inGame && isStale());
+  }
+  renderTimers(t);
+  paintConn();
+}
+
+function coachDoNow(text){
+  var lines = String(text == null ? '' : text).split(/\r?\n/);
+  for (var i = 0; i < lines.length; i++) {
+    var m = tidy(lines[i]).trim().match(/^DO NOW\s*:\s*(.*)$/i);
+    if (m && m[1].trim()) return m[1].trim().slice(0, 400);
+  }
+  return null;
+}
+
+function refreshDoNow(){
+  var el = document.getElementById('donow');
+  var txt = document.getElementById('donowText');
+  if (!el || !txt) return;
+  var text = lastCoach ? coachDoNow(lastCoach.text) : null;
+  if (!text) text = deathDoNow;
+  if (!text || !inGame) { el.style.display = 'none'; return; }
+  txt.innerHTML = esc(text);
+  el.style.display = 'flex';
+}
+
+function applyCoach(j){
+  lastCoach = isObj(j) ? j : null;
+  refreshDoNow();
+}
+
+function clockToken(v){
+  var m = String(v == null ? '' : v).trim().match(/^(\d{1,3}:\d{2})/);
+  return m ? m[1] : null;
+}
+
+function deathHeadline(j){
+  if (!isObj(j)) return null;
+  var text = typeof j.text === 'string' ? j.text.trim() : '';
+  if (text) {
+    var pend = text.match(/^PENDING\|([^|]+)\|/);
+    if (pend) {
+      var pc = clockToken(pend[1]);
+      return pc ? 'DIED ' + pc + ' \u2014 ANALYZING' : 'DIED \u2014 ANALYZING';
+    }
+  }
+  var st = isObj(j.structured) ? j.structured : null;
+  if (st) {
+    var clock = clockToken(st.died) || clockToken(st.gameClock);
+    if (clock) return st.killedByChampion === true ? 'DIED ' + clock + ' \u2014 CHAMPION' : 'DIED ' + clock;
+    return 'DEATH REPORT';
+  }
+  if (text) {
+    var lines = text.split(/\r?\n/);
+    for (var i = 0; i < lines.length; i++) {
+      var m = tidy(lines[i]).trim().match(/^DIED\s*:\s*(.*)$/i);
+      if (m) {
+        var c = clockToken(m[1]);
+        return c ? 'DIED ' + c : 'DEATH REPORT';
+      }
+    }
+  }
+  return null;
+}
+
+function deathDoNowText(j){
+  var st = isObj(j.structured) ? j.structured : null;
+  if (!st) return null;
+  var d = typeof st.doNow === 'string' ? st.doNow.trim() : '';
+  return d ? d.slice(0, 400) : null;
+}
+
+function applyDeath(j){
+  var el = document.getElementById('death');
+  var txt = document.getElementById('deathText');
+  deathDoNow = null;
+  var headline = null;
+  if (isObj(j)) {
+    var age = num(j.age);
+    var status = typeof j.status === 'string' ? j.status : 'ok';
+    var hasText = typeof j.text === 'string' && j.text.trim();
+    if ((status === 'ok' || status === 'unstable') && age != null && age >= 0 && age <= 60 && hasText) {
+      headline = deathHeadline(j);
+      deathDoNow = deathDoNowText(j);
+    }
+  }
+  if (el && txt) {
+    if (!headline) { el.style.display = 'none'; }
+    else { txt.innerHTML = esc(headline); el.style.display = 'flex'; }
+  }
+  refreshDoNow();
+}
+
+function applyGame(j){
+  if (!isObj(j)) { src.game = 'error'; gameStatus = 'malformed'; inGame = false; tick(); return; }
+  src.game = 'ok';
+  var st = typeof j.status === 'string' ? j.status : (j.inGame ? 'live' : 'no_game');
+  var t = num(j.time);
+  if (st === 'live' && j.inGame && t != null) {
+    gameStatus = 'live';
+    inGame = true;
+    anchor = { t: t, at: performance.now() };
+    lastGoodAt = performance.now();
+    var o = objectives(j);
+    dragonNext = o.dragonNext;
+    baronNext = o.baronNext;
+  } else {
+    gameStatus = st || 'no_game';
+    inGame = false;
+    anchor = { t: 0, at: performance.now() };
+    lastGoodAt = 0;
+    dragonNext = null;
+    baronNext = null;
+  }
+  tick();
+}
+
+async function getJson(url, timeoutMs){
+  var ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  var to = ac ? setTimeout(function(){ try { ac.abort(); } catch (e) {} }, timeoutMs || 8000) : null;
+  try {
+    var r = await fetch(url, { cache: 'no-store', signal: ac ? ac.signal : undefined });
+    var json = null, bad = false;
+    try { json = await r.json(); } catch (e) { bad = true; }
+    return { status: r.status, ok: r.ok, json: json, bad: bad };
+  } finally {
+    if (to) clearTimeout(to);
+  }
+}
+
+async function pollGame(){
+  try {
+    var r = await getJson('/api/game', 6000);
+    if (r.status === 404) { src.game = 'missing'; gameStatus = 'offline'; tick(); return; }
+    if (r.bad || !isObj(r.json)) { src.game = 'error'; gameStatus = 'malformed'; tick(); return; }
+    applyGame(r.json);
+  } catch (e) {
+    src.game = 'offline';
+    gameStatus = 'offline';
+    tick();
+  }
+}
+
+async function pollCoach(){
+  try {
+    var r = await getJson('/api/coach', 6000);
+    if (r.status === 404) { src.coach = 'missing'; applyCoach(null); return; }
+    if (r.bad || !isObj(r.json)) { src.coach = 'error'; applyCoach(null); return; }
+    var st = typeof r.json.status === 'string' ? r.json.status : 'ok';
+    src.coach = st === 'error' ? 'error' : (st === 'missing' ? 'missing' : (st === 'unstable' ? 'unstable' : 'ok'));
+    applyCoach(r.json);
+  } catch (e) {
+    src.coach = 'offline';
+    applyCoach(null);
+  }
+}
+
+async function pollDeath(){
+  try {
+    var r = await getJson('/api/death', 6000);
+    if (r.status === 404) { src.death = 'missing'; applyDeath(null); return; }
+    if (r.bad || !isObj(r.json)) { src.death = 'error'; applyDeath(null); return; }
+    var st = typeof r.json.status === 'string' ? r.json.status : 'ok';
+    src.death = st === 'error' ? 'error' : (st === 'missing' ? 'missing' : (st === 'unstable' ? 'unstable' : 'ok'));
+    applyDeath(r.json);
+  } catch (e) {
+    src.death = 'offline';
+    applyDeath(null);
+  }
+}
+
+async function pollTimeline(){
+  try {
+    var r = await getJson('/api/timeline/current', 6000);
+    if (r.status === 404) { src.timeline = 'missing'; return; }
+    if (r.bad || !isObj(r.json) || r.json.ok === false) { src.timeline = 'error'; return; }
+    src.timeline = 'ok';
+  } catch (e) {
+    src.timeline = 'offline';
+  }
+}
+
+function scheduleLoop(fn, ms){
+  async function step(){
+    try { await fn(); } catch (e) {}
+    setTimeout(step, ms);
+  }
+  step();
+}
+
+function applyConfig(){
+  var body = document.body;
+  if (!body) return;
+  body.className = 'bg-' + bgMode;
+  try {
+    body.style.setProperty('--scale', String(scaleParam));
+    if (bgMode === 'chroma') body.style.setProperty('--chroma', '#' + chromaHex);
+  } catch (e) {}
+}
+
+function init(){
+  applyConfig();
+  tick();
+  scheduleLoop(pollGame, pollParam);
+  scheduleLoop(pollCoach, pollParam);
+  scheduleLoop(pollDeath, pollParam);
+  scheduleLoop(pollTimeline, Math.max(pollParam, 5000));
+  setInterval(tick, 250);
+}
+
+var testApi = {
+  tidy: tidy, esc: esc, num: num, fmt: fmt,
+  coachDoNow: coachDoNow,
+  deathHeadline: deathHeadline,
+  deathDoNowText: deathDoNowText,
+  objectives: objectives,
+  applyGame: applyGame,
+  applyCoach: applyCoach,
+  applyDeath: applyDeath,
+  connInfo: connInfo,
+  src: src,
+  get inGame(){ return inGame; },
+  get gameStatus(){ return gameStatus; },
+  config: { bg: bgMode, chroma: chromaHex, scale: scaleParam, poll: pollParam }
+};
+if (typeof window !== 'undefined') window.__riftOverlay = testApi;
+if (typeof document !== 'undefined' && document.getElementById) init();
+})();
+</script>
+</body>
+</html>
