@@ -156,32 +156,44 @@ function Test-RiftSenseUpdate {
     if ($script:sessionActive) { return }
     $nowUtc = (Get-Date).ToUniversalTime()
     $statePath = Get-UpdateCheckStatePath
-    if (-not $Force) {
-        $lastUtc = $null
-        try {
-            if (Test-Path -LiteralPath $statePath) {
-                $raw = Get-Content -LiteralPath $statePath -Raw -Encoding UTF8
-                if ($raw) {
-                    $parsed = $raw | ConvertFrom-Json
-                    if ($parsed -and $parsed.lastCheckUtc) {
-                        $lastUtc = [datetime]::Parse("$($parsed.lastCheckUtc)").ToUniversalTime()
-                    }
+    $lastCheck = $null
+    $lastAttempt = $null
+    try {
+        if (Test-Path -LiteralPath $statePath) {
+            $raw = Get-Content -LiteralPath $statePath -Raw -Encoding UTF8
+            if ($raw) {
+                $parsed = $raw | ConvertFrom-Json
+                if ($parsed -and $parsed.lastCheckUtc) {
+                    $lastCheck = [datetime]::Parse("$($parsed.lastCheckUtc)").ToUniversalTime()
+                }
+                if ($parsed -and $parsed.lastAttemptUtc) {
+                    $lastAttempt = [datetime]::Parse("$($parsed.lastAttemptUtc)").ToUniversalTime()
                 }
             }
-        } catch { $lastUtc = $null }
-        if ($lastUtc -and ((($nowUtc) - $lastUtc).TotalHours -lt $UpdateCheckHours)) { return }
+        }
+    } catch { $lastCheck = $null; $lastAttempt = $null }
+    if (-not $Force) {
+        if ($lastCheck -and ((($nowUtc) - $lastCheck).TotalHours -lt $UpdateCheckHours)) { return }
+        if ($lastAttempt -and ((($nowUtc) - $lastAttempt).TotalMinutes -lt 15)) { return }
     }
-    try {
-        $state = [ordered]@{ lastCheckUtc = $nowUtc.ToString('o'); source = 'autocoach'; hours = $UpdateCheckHours }
-        Set-Content -LiteralPath $statePath -Value ($state | ConvertTo-Json -Compress) -Encoding Ascii -ErrorAction SilentlyContinue
-    } catch { }
     $stamp = Get-Date -Format 'HH:mm:ss'
+    $ok = $false
     try {
         $body = @{ force = $false } | ConvertTo-Json -Compress
         $res = Invoke-RestMethod -Uri 'http://127.0.0.1:7777/api/update/check' -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 3 -ErrorAction Stop
+        $ok = $true
         if ($res -and $res.ok -and ("$($res.status)" -eq 'update_available')) {
             Write-Host "[$stamp] Update available: $($res.current) -> $($res.latest). Open the dashboard Setup tab to install." -ForegroundColor Yellow
         }
+    } catch { $ok = $false }
+    try {
+        $state = [ordered]@{ lastAttemptUtc = $nowUtc.ToString('o'); source = 'autocoach'; hours = $UpdateCheckHours }
+        if ($ok) {
+            $state['lastCheckUtc'] = $nowUtc.ToString('o')
+        } elseif ($lastCheck) {
+            $state['lastCheckUtc'] = $lastCheck.ToString('o')
+        }
+        Set-Content -LiteralPath $statePath -Value ($state | ConvertTo-Json -Compress) -Encoding Ascii -ErrorAction SilentlyContinue
     } catch { }
 }
 

@@ -2934,8 +2934,14 @@ function updateStateIs(info, names){
 }
 function updateIsReady(info){
   if (!isObj(info)) return false;
-  if (typeof info.staged === 'string' && info.staged) return true;
-  if (isObj(info.staged)) return true;
+  const st = info.staged;
+  if (typeof st === 'string') return !!st;
+  if (isObj(st)) {
+    if (st.ready === false) return false;
+    if (st.ready === true) return true;
+    return !!((typeof st.path === 'string' && st.path) ||
+              (typeof st.version === 'string' && st.version));
+  }
   return updateStateIs(info, ['ready', 'staged', 'downloaded']);
 }
 function updateIsAvailable(info){

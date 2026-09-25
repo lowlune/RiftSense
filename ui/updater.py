@@ -878,6 +878,11 @@ def _apply(staged_path):
         args, creationflags=creationflags, cwd=helper_dir,
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL, close_fds=True)
+    stored.pop('staged', None)
+    try:
+        _write_state(stored)
+    except OSError:
+        pass
     return {'ok': True, 'status': 'started', 'helper': helper,
             'logPath': LOG_FILE, 'error': None}
 
@@ -927,14 +932,28 @@ def state():
 
 def log_tail(limit=80):
     try:
-        with open(LOG_FILE, 'r', encoding='utf-8', errors='replace') as f:
-            lines = f.read().splitlines()
-    except OSError:
-        return []
-    try:
         limit = int(limit)
     except (TypeError, ValueError):
         limit = 80
     if limit <= 0:
         return []
+    paths = []
+    try:
+        for name in os.listdir(LOG_DIR):
+            if name.endswith('.log'):
+                candidate = os.path.join(LOG_DIR, name)
+                if os.path.isfile(candidate):
+                    paths.append(candidate)
+    except OSError:
+        paths = []
+    if not paths:
+        paths = [LOG_FILE]
+    paths.sort(key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0.0)
+    lines = []
+    for path in paths:
+        try:
+            with open(path, 'r', encoding='utf-8', errors='replace') as f:
+                lines.extend(f.read().splitlines())
+        except OSError:
+            continue
     return lines[-limit:]

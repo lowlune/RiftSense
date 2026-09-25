@@ -659,6 +659,19 @@ class StagedExtractionTests(unittest.TestCase):
         self.assertIn(payload, args)
         self.assertIn('-Restart', args)
         self.assertIn('-WaitPid', args)
+        self.assertFalse(updater.state()['staged']['ready'],
+                         'consumed staged state must be cleared after apply')
+
+    def test_log_tail_reads_helper_dated_logs(self):
+        os.makedirs(updater.LOG_DIR, exist_ok=True)
+        with open(os.path.join(updater.LOG_DIR, 'update.log'), 'w', encoding='utf-8') as f:
+            f.write('python line 1\npython line 2\n')
+        dated = os.path.join(updater.LOG_DIR, 'update-20260101.log')
+        with open(dated, 'w', encoding='utf-8') as f:
+            f.write('helper line 1\nhelper line 2\n')
+        os.utime(dated, (time.time() + 5, time.time() + 5))
+        lines = updater.log_tail(3)
+        self.assertEqual(lines, ['python line 2', 'helper line 1', 'helper line 2'])
 
     def test_apply_extracts_zip_before_spawning_helper(self):
         archive = self._zip({'RiftSense/VERSION': '9.9.9',
